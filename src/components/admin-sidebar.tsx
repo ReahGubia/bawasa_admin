@@ -9,6 +9,8 @@ import {
   Droplets,
   AlertTriangle,
   Activity,
+  UserCheck,
+  Receipt,
 } from "lucide-react"
 
 import {
@@ -32,9 +34,19 @@ const items = [
     icon: Home,
   },
   {
-    title: "User Management",
-    url: "/admin/users",
+    title: "Consumers",
+    url: "/admin/consumers",
     icon: Users,
+  },
+  {
+    title: "Meter Readers",
+    url: "/admin/meter-readers",
+    icon: UserCheck,
+  },
+  {
+    title: "Cashiers",
+    url: "/admin/cashiers",
+    icon: Receipt,
   },
   {
     title: "Meter Readings",
@@ -42,7 +54,7 @@ const items = [
     icon: Droplets,
   },
   {
-    title: "Billing Management",
+    title: "Billing",
     url: "/admin/billing",
     icon: CreditCard,
   },
