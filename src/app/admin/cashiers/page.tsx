@@ -21,9 +21,13 @@ import {
   CheckCircle,
   XCircle,
   Clock,
-  UserCheck,
+  UserPlus,
   Loader2,
-  RefreshCw
+  RefreshCw,
+  CreditCard,
+  DollarSign,
+  Receipt,
+  TrendingUp
 } from "lucide-react"
 import {
   DropdownMenu,
@@ -37,62 +41,64 @@ import { UserService, UserWithStatus } from "@/lib/user-service"
 import { supabase } from "@/lib/supabase"
 import { useEffect, useState } from "react"
 
-export default function UserManagementPage() {
-  const [users, setUsers] = useState<UserWithStatus[]>([])
+export default function CashierManagementPage() {
+  const [cashiers, setCashiers] = useState<UserWithStatus[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
-  const [filteredUsers, setFilteredUsers] = useState<UserWithStatus[]>([])
+  const [filteredCashiers, setFilteredCashiers] = useState<UserWithStatus[]>([])
 
-  // Fetch users from Supabase
-  const fetchUsers = async () => {
+  // Fetch cashiers from Supabase
+  const fetchCashiers = async () => {
     try {
-      console.log('🚀 Starting to fetch users...')
+      console.log('🚀 Starting to fetch cashiers...')
       setLoading(true)
       setError(null)
       
-      const { data, error } = await UserService.getAllUsers()
+      // For now, we'll filter staff users as cashiers
+      // In a real implementation, you might have a specific role field
+      const { data, error } = await UserService.getUsersByAccountType('staff')
       
       console.log('📋 Fetch result:', { data, error })
       
       if (error) {
-        console.error('💥 Error in fetchUsers:', error)
-        setError(error.message || 'Failed to fetch users')
+        console.error('💥 Error in fetchCashiers:', error)
+        setError(error.message || 'Failed to fetch cashiers')
         return
       }
       
       if (data) {
-        console.log('📝 Formatting users...')
-        const formattedUsers = data.map(user => UserService.formatUserForDisplay(user))
-        console.log('✨ Formatted users:', formattedUsers)
-        setUsers(formattedUsers)
-        setFilteredUsers(formattedUsers)
+        console.log('📝 Formatting cashiers...')
+        const formattedCashiers = data.map(cashier => UserService.formatUserForDisplay(cashier))
+        console.log('✨ Formatted cashiers:', formattedCashiers)
+        setCashiers(formattedCashiers)
+        setFilteredCashiers(formattedCashiers)
       } else {
         console.log('📭 No data returned from Supabase')
-        setUsers([])
-        setFilteredUsers([])
+        setCashiers([])
+        setFilteredCashiers([])
       }
     } catch (err) {
-      console.error('💥 Unexpected error in fetchUsers:', err)
+      console.error('💥 Unexpected error in fetchCashiers:', err)
       setError('An unexpected error occurred')
     } finally {
       setLoading(false)
     }
   }
 
-  // Handle user status update
-  const handleStatusUpdate = async (userId: string, isActive: boolean) => {
+  // Handle cashier status update
+  const handleStatusUpdate = async (cashierId: string, isActive: boolean) => {
     try {
-      const { error } = await UserService.updateUserStatus(userId, isActive)
+      const { error } = await UserService.updateUserStatus(cashierId, isActive)
       if (error) {
-        setError(error.message || 'Failed to update user status')
+        setError(error.message || 'Failed to update cashier status')
         return
       }
-      // Refresh the users list
-      await fetchUsers()
+      // Refresh the cashiers list
+      await fetchCashiers()
     } catch (err) {
       setError('An unexpected error occurred')
-      console.error('Error updating user status:', err)
+      console.error('Error updating cashier status:', err)
     }
   }
 
@@ -100,16 +106,16 @@ export default function UserManagementPage() {
   const handleSearch = (query: string) => {
     setSearchQuery(query)
     if (!query.trim()) {
-      setFilteredUsers(users)
+      setFilteredCashiers(cashiers)
       return
     }
     
-    const filtered = users.filter(user => 
-      user.full_name?.toLowerCase().includes(query.toLowerCase()) ||
-      user.email.toLowerCase().includes(query.toLowerCase()) ||
-      user.phone?.toLowerCase().includes(query.toLowerCase())
+    const filtered = cashiers.filter(cashier => 
+      cashier.full_name?.toLowerCase().includes(query.toLowerCase()) ||
+      cashier.email.toLowerCase().includes(query.toLowerCase()) ||
+      cashier.phone?.toLowerCase().includes(query.toLowerCase())
     )
-    setFilteredUsers(filtered)
+    setFilteredCashiers(filtered)
   }
 
   // Format date for display
@@ -136,7 +142,7 @@ export default function UserManagementPage() {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "verified":
-        return <Badge variant="default" className="bg-green-100 text-green-800"><CheckCircle className="h-3 w-3 mr-1" />Verified</Badge>
+        return <Badge variant="default" className="bg-green-100 text-green-800"><CheckCircle className="h-3 w-3 mr-1" />Active</Badge>
       case "pending":
         return <Badge variant="secondary" className="bg-yellow-100 text-yellow-800"><Clock className="h-3 w-3 mr-1" />Pending</Badge>
       case "suspended":
@@ -146,40 +152,10 @@ export default function UserManagementPage() {
     }
   }
 
-  // Test Supabase connection
-  const testSupabaseConnection = async () => {
-    try {
-      console.log('🔧 Testing Supabase connection...')
-      
-      // Test basic connection
-      const { data: { user } } = await supabase.auth.getUser()
-      console.log('👤 Current user:', user)
-      
-      // Test table access
-      const { data, error } = await supabase
-        .from('users')
-        .select('count')
-        .limit(1)
-      
-      console.log('📊 Table access test:', { data, error })
-      
-      if (error) {
-        console.error('❌ Table access error:', error)
-        setError(`Database error: ${error.message}`)
-      } else {
-        console.log('✅ Supabase connection successful')
-      }
-    } catch (err) {
-      console.error('💥 Connection test failed:', err)
-      setError(`Connection test failed: ${err}`)
-    }
-  }
-
-  // Load users on component mount
+  // Load cashiers on component mount
   useEffect(() => {
-    console.log('🎯 Component mounted, starting user fetch...')
-    testSupabaseConnection()
-    fetchUsers()
+    console.log('🎯 Component mounted, starting cashier fetch...')
+    fetchCashiers()
   }, [])
 
   return (
@@ -188,37 +164,22 @@ export default function UserManagementPage() {
         {/* Page Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">User Management</h1>
+            <h1 className="text-3xl font-bold tracking-tight">Cashiers</h1>
             <p className="text-muted-foreground">
-              Manage consumer accounts and user verification
+              Manage cashiers and billing operations
             </p>
           </div>
           <div className="flex items-center space-x-2">
-            <Button variant="outline" onClick={fetchUsers} disabled={loading}>
+            <Button variant="outline" onClick={fetchCashiers} disabled={loading}>
               <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
               Refresh
             </Button>
             <Button>
-              <UserCheck className="h-4 w-4 mr-2" />
-              Add New User
+              <UserPlus className="h-4 w-4 mr-2" />
+              Add New Cashier
             </Button>
           </div>
         </div>
-
-        {/* Debug Panel */}
-        <Card className="border-blue-200 bg-blue-50">
-          <CardHeader>
-            <CardTitle className="text-blue-800">Debug Information</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2 text-sm">
-              <div><strong>Supabase URL:</strong> {process.env.NEXT_PUBLIC_SUPABASE_URL || 'Using fallback'}</div>
-              <div><strong>Users Count:</strong> {users.length}</div>
-              <div><strong>Loading:</strong> {loading ? 'Yes' : 'No'}</div>
-              <div><strong>Error:</strong> {error || 'None'}</div>
-            </div>
-          </CardContent>
-        </Card>
 
         {/* Error Message */}
         {error && (
@@ -232,18 +193,18 @@ export default function UserManagementPage() {
           </Card>
         )}
 
-        {/* Users Table */}
+        {/* Cashiers Table */}
         <Card>
           <CardHeader>
-            <CardTitle>User Accounts</CardTitle>
+            <CardTitle>Cashier Accounts</CardTitle>
             <CardDescription>
-              Manage all consumer accounts registered through the mobile app
+              Manage cashiers and their billing operations for water service payments
             </CardDescription>
             <div className="flex items-center space-x-2 pt-4">
               <div className="relative flex-1 max-w-sm">
                 <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input 
-                  placeholder="Search users..." 
+                  placeholder="Search cashiers..." 
                   className="pl-8" 
                   value={searchQuery}
                   onChange={(e) => handleSearch(e.target.value)}
@@ -259,49 +220,60 @@ export default function UserManagementPage() {
             {loading ? (
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="h-6 w-6 animate-spin mr-2" />
-                <span>Loading users...</span>
+                <span>Loading cashiers...</span>
               </div>
-            ) : filteredUsers.length === 0 ? (
+            ) : filteredCashiers.length === 0 ? (
               <div className="text-center py-8">
                 <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                <h3 className="text-lg font-medium">No users found</h3>
+                <h3 className="text-lg font-medium">No cashiers found</h3>
                 <p className="text-muted-foreground">
-                  {searchQuery ? 'Try adjusting your search criteria' : 'No users have been registered yet'}
+                  {searchQuery ? 'Try adjusting your search criteria' : 'No cashiers have been registered yet'}
                 </p>
               </div>
             ) : (
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>User</TableHead>
+                    <TableHead>Cashier</TableHead>
                     <TableHead>Contact</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead>Account Type</TableHead>
-                    <TableHead>Join Date</TableHead>
+                    <TableHead>Station</TableHead>
+                    <TableHead>Today's Transactions</TableHead>
                     <TableHead>Last Active</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredUsers.map((user) => (
-                    <TableRow key={user.id}>
+                  {filteredCashiers.map((cashier) => (
+                    <TableRow key={cashier.id}>
                       <TableCell className="font-medium">
-                        {user.full_name || 'No name provided'}
+                        <div className="flex items-center space-x-2">
+                          <CreditCard className="h-4 w-4 text-green-600" />
+                          <span>{cashier.full_name || 'No name provided'}</span>
+                        </div>
                       </TableCell>
                       <TableCell>
-                        <div>
-                          <div className="text-sm">{user.email}</div>
+                        <div className="space-y-1">
+                          <div className="text-sm">{cashier.email}</div>
                           <div className="text-sm text-muted-foreground">
-                            {user.phone || 'No phone provided'}
+                            {cashier.phone || 'No phone provided'}
                           </div>
                         </div>
                       </TableCell>
-                      <TableCell>{getStatusBadge(user.status)}</TableCell>
+                      <TableCell>{getStatusBadge(cashier.status)}</TableCell>
                       <TableCell>
-                        <Badge variant="outline">{user.account_type}</Badge>
+                        <div className="text-sm">
+                          <div className="font-medium">Station 1</div>
+                          <div className="text-muted-foreground">Main Office</div>
+                        </div>
                       </TableCell>
-                      <TableCell>{formatDate(user.created_at)}</TableCell>
-                      <TableCell>{formatLastLogin(user.last_login_at)}</TableCell>
+                      <TableCell>
+                        <div className="flex items-center space-x-1">
+                          <TrendingUp className="h-3 w-3 text-green-600" />
+                          <span className="text-sm font-medium">47</span>
+                        </div>
+                      </TableCell>
+                      <TableCell>{formatLastLogin(cashier.last_login_at)}</TableCell>
                       <TableCell className="text-right">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
@@ -313,21 +285,23 @@ export default function UserManagementPage() {
                           <DropdownMenuContent align="end">
                             <DropdownMenuLabel>Actions</DropdownMenuLabel>
                             <DropdownMenuItem>View Profile</DropdownMenuItem>
-                            <DropdownMenuItem>Edit User</DropdownMenuItem>
+                            <DropdownMenuItem>Edit Cashier</DropdownMenuItem>
+                            <DropdownMenuItem>View Transactions</DropdownMenuItem>
+                            <DropdownMenuItem>Assign Station</DropdownMenuItem>
                             <DropdownMenuSeparator />
-                            {user.is_active ? (
+                            {cashier.is_active ? (
                               <DropdownMenuItem 
-                                onClick={() => handleStatusUpdate(user.id, false)}
+                                onClick={() => handleStatusUpdate(cashier.id, false)}
                                 className="text-orange-600"
                               >
-                                Suspend Account
+                                Suspend Access
                               </DropdownMenuItem>
                             ) : (
                               <DropdownMenuItem 
-                                onClick={() => handleStatusUpdate(user.id, true)}
+                                onClick={() => handleStatusUpdate(cashier.id, true)}
                                 className="text-green-600"
                               >
-                                Activate Account
+                                Activate Access
                               </DropdownMenuItem>
                             )}
                             <DropdownMenuSeparator />
