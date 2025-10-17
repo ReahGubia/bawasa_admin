@@ -205,6 +205,73 @@ export class UserService {
   }
 
   /**
+   * Check if admin user exists in public users table and create if not
+   */
+  static async ensureAdminUserExists(authUser: any): Promise<{ data: User | null; error: any }> {
+    try {
+      console.log('🔍 Checking if admin user exists in public users table...', authUser.id)
+      
+      // First, check if user already exists in public users table
+      const { data: existingUser, error: fetchError } = await supabase
+        .from('users')
+        .select('*')
+        .eq('auth_user_id', authUser.id)
+        .single()
+
+      if (fetchError && fetchError.code !== 'PGRST116') { // PGRST116 = no rows returned
+        console.error('❌ Error checking existing user:', fetchError)
+        return { data: null, error: fetchError }
+      }
+
+      if (existingUser) {
+        console.log('✅ Admin user already exists in public users table')
+        // Update last_login_at
+        const { data: updatedUser, error: updateError } = await supabase
+          .from('users')
+          .update({ last_login_at: new Date().toISOString() })
+          .eq('auth_user_id', authUser.id)
+          .select()
+          .single()
+
+        if (updateError) {
+          console.error('❌ Error updating last_login_at:', updateError)
+          return { data: existingUser, error: updateError }
+        }
+
+        return { data: updatedUser, error: null }
+      }
+
+      // User doesn't exist in public users table, create them
+      console.log('🆕 Creating admin user in public users table...')
+      
+      const { data: newUser, error: createError } = await supabase
+        .from('users')
+        .insert({
+          auth_user_id: authUser.id,
+          email: authUser.email,
+          full_name: authUser.user_metadata?.full_name || authUser.email?.split('@')[0] || 'Admin User',
+          account_type: 'admin',
+          is_active: true,
+          last_login_at: new Date().toISOString()
+        })
+        .select()
+        .single()
+
+      if (createError) {
+        console.error('❌ Error creating admin user:', createError)
+        return { data: null, error: createError }
+      }
+
+      console.log('✅ Admin user created successfully in public users table')
+      return { data: newUser, error: null }
+
+    } catch (error) {
+      console.error('💥 Unexpected error ensuring admin user exists:', error)
+      return { data: null, error }
+    }
+  }
+
+  /**
    * Format user data for display
    */
   static formatUserForDisplay(user: User): UserWithStatus {

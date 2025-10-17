@@ -7,6 +7,7 @@ import { FormField } from '@/components/auth/FormField';
 import { SubmitButton } from '@/components/auth/SubmitButton';
 import { ErrorMessage } from '@/components/auth/ErrorMessage';
 import { auth } from '@/lib/supabase';
+import { UserService } from '@/lib/user-service';
 
 export default function Home() {
   const [isLoading, setIsLoading] = useState(false);
@@ -30,6 +31,18 @@ export default function Home() {
       }
 
       if (data.user) {
+        // Ensure admin user exists in public users table
+        console.log('🔍 Ensuring admin user exists in public users table...');
+        const { data: userProfile, error: profileError } = await UserService.ensureAdminUserExists(data.user);
+        
+        if (profileError) {
+          console.error('❌ Error ensuring admin user exists:', profileError);
+          // Don't block the sign-in flow, just log the error
+          // The user can still proceed to admin dashboard
+        } else {
+          console.log('✅ Admin user profile ensured:', userProfile);
+        }
+        
         // Successful sign in - redirect to admin dashboard
         router.push('/admin');
       } else {

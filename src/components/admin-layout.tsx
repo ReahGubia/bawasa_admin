@@ -17,6 +17,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { auth } from "@/lib/supabase"
+import { UserService } from "@/lib/user-service"
 
 interface AdminLayoutProps {
   children: React.ReactNode
@@ -32,6 +33,17 @@ export function AdminLayout({ children }: AdminLayoutProps) {
       try {
         const { data: { user } } = await auth.getCurrentUser()
         if (user) {
+          // Ensure admin user exists in public users table
+          console.log('🔍 Ensuring admin user exists in public users table...');
+          const { data: userProfile, error: profileError } = await UserService.ensureAdminUserExists(user);
+          
+          if (profileError) {
+            console.error('❌ Error ensuring admin user exists:', profileError);
+            // Don't block the admin access, just log the error
+          } else {
+            console.log('✅ Admin user profile ensured:', userProfile);
+          }
+          
           setUser(user)
         } else {
           // No user found, redirect to sign in
