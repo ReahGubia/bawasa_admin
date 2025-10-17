@@ -37,16 +37,17 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { UserService, UserWithStatus } from "@/lib/user-service"
+import { MeterReaderService, MeterReaderWithUser } from "@/lib/meter-reader-service"
 import { supabase } from "@/lib/supabase"
 import { useEffect, useState } from "react"
+import { AddMeterReaderDialog } from "@/components/add-meter-reader-dialog"
 
 export default function MeterReaderManagementPage() {
-  const [meterReaders, setMeterReaders] = useState<UserWithStatus[]>([])
+  const [meterReaders, setMeterReaders] = useState<MeterReaderWithUser[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
-  const [filteredMeterReaders, setFilteredMeterReaders] = useState<UserWithStatus[]>([])
+  const [filteredMeterReaders, setFilteredMeterReaders] = useState<MeterReaderWithUser[]>([])
 
   // Fetch meter readers from Supabase
   const fetchMeterReaders = async () => {
@@ -55,9 +56,7 @@ export default function MeterReaderManagementPage() {
       setLoading(true)
       setError(null)
       
-      // For now, we'll filter staff users as meter readers
-      // In a real implementation, you might have a specific role field
-      const { data, error } = await UserService.getUsersByAccountType('staff')
+      const { data, error } = await MeterReaderService.getAllMeterReaders()
       
       console.log('📋 Fetch result:', { data, error })
       
@@ -68,11 +67,9 @@ export default function MeterReaderManagementPage() {
       }
       
       if (data) {
-        console.log('📝 Formatting meter readers...')
-        const formattedMeterReaders = data.map(reader => UserService.formatUserForDisplay(reader))
-        console.log('✨ Formatted meter readers:', formattedMeterReaders)
-        setMeterReaders(formattedMeterReaders)
-        setFilteredMeterReaders(formattedMeterReaders)
+        console.log('✨ Meter readers fetched:', data)
+        setMeterReaders(data)
+        setFilteredMeterReaders(data)
       } else {
         console.log('📭 No data returned from Supabase')
         setMeterReaders([])
@@ -89,7 +86,7 @@ export default function MeterReaderManagementPage() {
   // Handle meter reader status update
   const handleStatusUpdate = async (readerId: string, isActive: boolean) => {
     try {
-      const { error } = await UserService.updateUserStatus(readerId, isActive)
+      const { error } = await MeterReaderService.updateMeterReaderStatus(readerId, isActive)
       if (error) {
         setError(error.message || 'Failed to update meter reader status')
         return
@@ -113,7 +110,8 @@ export default function MeterReaderManagementPage() {
     const filtered = meterReaders.filter(reader => 
       reader.full_name?.toLowerCase().includes(query.toLowerCase()) ||
       reader.email.toLowerCase().includes(query.toLowerCase()) ||
-      reader.phone?.toLowerCase().includes(query.toLowerCase())
+      reader.phone?.toLowerCase().includes(query.toLowerCase()) ||
+      reader.employee_id?.toLowerCase().includes(query.toLowerCase())
     )
     setFilteredMeterReaders(filtered)
   }
@@ -139,16 +137,11 @@ export default function MeterReaderManagementPage() {
     })
   }
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case "verified":
-        return <Badge variant="default" className="bg-green-100 text-green-800"><CheckCircle className="h-3 w-3 mr-1" />Active</Badge>
-      case "pending":
-        return <Badge variant="secondary" className="bg-yellow-100 text-yellow-800"><Clock className="h-3 w-3 mr-1" />Pending</Badge>
-      case "suspended":
-        return <Badge variant="destructive"><XCircle className="h-3 w-3 mr-1" />Suspended</Badge>
-      default:
-        return <Badge variant="outline">{status}</Badge>
+  const getStatusBadge = (isActive: boolean) => {
+    if (isActive) {
+      return <Badge variant="default" className="bg-green-100 text-green-800"><CheckCircle className="h-3 w-3 mr-1" />Active</Badge>
+    } else {
+      return <Badge variant="destructive"><XCircle className="h-3 w-3 mr-1" />Inactive</Badge>
     }
   }
 
@@ -174,10 +167,7 @@ export default function MeterReaderManagementPage() {
               <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
               Refresh
             </Button>
-            <Button>
-              <UserPlus className="h-4 w-4 mr-2" />
-              Add New Meter Reader
-            </Button>
+            <AddMeterReaderDialog onMeterReaderAdded={fetchMeterReaders} />
           </div>
         </div>
 
@@ -237,11 +227,13 @@ export default function MeterReaderManagementPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Meter Reader</TableHead>
+                    <TableHead>Employee ID</TableHead>
                     <TableHead>Contact</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Assigned Route</TableHead>
+                    <TableHead>Territory</TableHead>
                     <TableHead>Last Reading</TableHead>
-                    <TableHead>Last Active</TableHead>
+                    <TableHead>Performance</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -255,6 +247,12 @@ export default function MeterReaderManagementPage() {
                         </div>
                       </TableCell>
                       <TableCell>
+                        <div className="flex items-center space-x-1">
+                          <Activity className="h-3 w-3 text-muted-foreground" />
+                          <span className="text-sm font-mono">{reader.employee_id}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell>
                         <div className="space-y-1">
                           <div className="text-sm">{reader.email}</div>
                           <div className="text-sm text-muted-foreground">
@@ -262,20 +260,35 @@ export default function MeterReaderManagementPage() {
                           </div>
                         </div>
                       </TableCell>
-                      <TableCell>{getStatusBadge(reader.status)}</TableCell>
+                      <TableCell>{getStatusBadge(reader.is_active)}</TableCell>
                       <TableCell>
                         <div className="flex items-center space-x-1">
                           <MapPin className="h-3 w-3 text-muted-foreground" />
-                          <span className="text-sm">Route A-01</span>
+                          <span className="text-sm">{reader.assigned_route || 'Not assigned'}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center space-x-1">
+                          <MapPin className="h-3 w-3 text-muted-foreground" />
+                          <span className="text-sm">{reader.territory || 'Not assigned'}</span>
                         </div>
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center space-x-1">
                           <Calendar className="h-3 w-3 text-muted-foreground" />
-                          <span className="text-sm">Dec 15, 2024</span>
+                          <span className="text-sm">
+                            {reader.last_reading_date ? formatDate(reader.last_reading_date) : 'No readings'}
+                          </span>
                         </div>
                       </TableCell>
-                      <TableCell>{formatLastLogin(reader.last_login_at)}</TableCell>
+                      <TableCell>
+                        <div className="flex items-center space-x-1">
+                          <Activity className="h-3 w-3 text-muted-foreground" />
+                          <span className="text-sm">
+                            {reader.performance_rating > 0 ? `${reader.performance_rating}/5.0` : 'Not rated'}
+                          </span>
+                        </div>
+                      </TableCell>
                       <TableCell className="text-right">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
@@ -296,14 +309,14 @@ export default function MeterReaderManagementPage() {
                                 onClick={() => handleStatusUpdate(reader.id, false)}
                                 className="text-orange-600"
                               >
-                                Suspend Access
+                                Deactivate Reader
                               </DropdownMenuItem>
                             ) : (
                               <DropdownMenuItem 
                                 onClick={() => handleStatusUpdate(reader.id, true)}
                                 className="text-green-600"
                               >
-                                Activate Access
+                                Activate Reader
                               </DropdownMenuItem>
                             )}
                             <DropdownMenuSeparator />
