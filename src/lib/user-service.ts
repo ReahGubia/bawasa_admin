@@ -7,7 +7,7 @@ export interface User {
   full_name: string | null
   phone: string | null
   avatar_url: string | null
-  account_type: 'consumer' | 'admin' | 'staff'
+  account_type: 'pending' | 'consumer' | 'admin' | 'staff'
   is_active: boolean
   last_login_at: string | null
   created_at: string
