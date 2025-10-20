@@ -1,3 +1,5 @@
+"use client"
+
 import { AdminLayout } from "@/components/admin-layout"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -6,15 +8,58 @@ import {
   Droplets, 
   CreditCard, 
   AlertTriangle, 
-  TrendingUp, 
   Activity,
   Calendar,
   CheckCircle,
-  Clock,
-  DollarSign
+  DollarSign,
+  Loader2
 } from "lucide-react"
+import { useEffect, useState } from "react"
+import { DashboardService, DashboardStats, MeterReading, Issue } from "@/lib/dashboard-service"
 
 export default function AdminDashboardPage() {
+  const [stats, setStats] = useState<DashboardStats | null>(null)
+  const [meterReadings, setMeterReadings] = useState<MeterReading[]>([])
+  const [issues, setIssues] = useState<Issue[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    const fetchDashboardData = async () => {
+      try {
+        setLoading(true)
+        setError(null)
+
+        // Fetch all dashboard data in parallel
+        const [statsResult, meterReadingsResult, issuesResult] = await Promise.all([
+          DashboardService.getStats(),
+          DashboardService.getRecentMeterReadings(),
+          DashboardService.getRecentIssues()
+        ])
+
+        if (statsResult.error) {
+          throw new Error(`Failed to fetch stats: ${statsResult.error.message}`)
+        }
+        if (meterReadingsResult.error) {
+          throw new Error(`Failed to fetch meter readings: ${meterReadingsResult.error.message}`)
+        }
+        if (issuesResult.error) {
+          throw new Error(`Failed to fetch issues: ${issuesResult.error.message}`)
+        }
+
+        setStats(statsResult.data || null)
+        setMeterReadings(meterReadingsResult.data || [])
+        setIssues(issuesResult.data || [])
+      } catch (err) {
+        console.error('Error fetching dashboard data:', err)
+        setError(err instanceof Error ? err.message : 'An unexpected error occurred')
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchDashboardData()
+  }, [])
   return (
     <AdminLayout>
       <div className="space-y-6">
@@ -26,6 +71,16 @@ export default function AdminDashboardPage() {
           </p>
         </div>
 
+        {/* Error Message */}
+        {error && (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+            <div className="flex items-center">
+              <AlertTriangle className="h-5 w-5 text-red-600 mr-2" />
+              <p className="text-red-800">{error}</p>
+            </div>
+          </div>
+        )}
+
         {/* Key Metrics Cards */}
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           <Card>
@@ -34,10 +89,19 @@ export default function AdminDashboardPage() {
               <Users className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">2,543</div>
-              <p className="text-xs text-muted-foreground">
-                +12% from last month
-              </p>
+              {loading ? (
+                <div className="flex items-center">
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  <span className="text-sm text-muted-foreground">Loading...</span>
+                </div>
+              ) : (
+                <>
+                  <div className="text-2xl font-bold">{stats?.totalUsers?.toLocaleString() || '0'}</div>
+                  <p className="text-xs text-muted-foreground">
+                    Registered users
+                  </p>
+                </>
+              )}
             </CardContent>
           </Card>
           
@@ -47,10 +111,19 @@ export default function AdminDashboardPage() {
               <Droplets className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">8,421</div>
-              <p className="text-xs text-muted-foreground">
-                +8% from last month
-              </p>
+              {loading ? (
+                <div className="flex items-center">
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  <span className="text-sm text-muted-foreground">Loading...</span>
+                </div>
+              ) : (
+                <>
+                  <div className="text-2xl font-bold">{stats?.totalMeterReadings?.toLocaleString() || '0'}</div>
+                  <p className="text-xs text-muted-foreground">
+                    Total readings submitted
+                  </p>
+                </>
+              )}
             </CardContent>
           </Card>
           
@@ -60,10 +133,19 @@ export default function AdminDashboardPage() {
               <CreditCard className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">1,234</div>
-              <p className="text-xs text-muted-foreground">
-                -3% from last month
-              </p>
+              {loading ? (
+                <div className="flex items-center">
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  <span className="text-sm text-muted-foreground">Loading...</span>
+                </div>
+              ) : (
+                <>
+                  <div className="text-2xl font-bold">{stats?.pendingBills?.toLocaleString() || '0'}</div>
+                  <p className="text-xs text-muted-foreground">
+                    Bills awaiting payment
+                  </p>
+                </>
+              )}
             </CardContent>
           </Card>
           
@@ -73,10 +155,19 @@ export default function AdminDashboardPage() {
               <AlertTriangle className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">23</div>
-              <p className="text-xs text-muted-foreground">
-                -15% from last month
-              </p>
+              {loading ? (
+                <div className="flex items-center">
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  <span className="text-sm text-muted-foreground">Loading...</span>
+                </div>
+              ) : (
+                <>
+                  <div className="text-2xl font-bold">{stats?.openIssues?.toLocaleString() || '0'}</div>
+                  <p className="text-xs text-muted-foreground">
+                    Issues requiring attention
+                  </p>
+                </>
+              )}
             </CardContent>
           </Card>
         </div>
@@ -92,30 +183,37 @@ export default function AdminDashboardPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                {[
-                  { id: "MR001", user: "John Doe", value: "1,234", status: "pending", date: "2024-01-15" },
-                  { id: "MR002", user: "Jane Smith", value: "2,456", status: "approved", date: "2024-01-15" },
-                  { id: "MR003", user: "Bob Johnson", value: "3,789", status: "pending", date: "2024-01-14" },
-                  { id: "MR004", user: "Alice Brown", value: "1,567", status: "approved", date: "2024-01-14" },
-                ].map((reading) => (
-                  <div key={reading.id} className="flex items-center justify-between p-3 border rounded-lg">
-                    <div className="flex items-center space-x-3">
-                      <Droplets className="h-4 w-4 text-blue-600" />
-                      <div>
-                        <p className="font-medium">{reading.user}</p>
-                        <p className="text-sm text-muted-foreground">{reading.value} units</p>
+              {loading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin mr-2" />
+                  <span className="text-muted-foreground">Loading meter readings...</span>
+                </div>
+              ) : meterReadings.length === 0 ? (
+                <div className="text-center py-8">
+                  <Droplets className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                  <p className="text-muted-foreground">No meter readings found</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {meterReadings.map((reading) => (
+                    <div key={reading.id} className="flex items-center justify-between p-3 border rounded-lg">
+                      <div className="flex items-center space-x-3">
+                        <Droplets className="h-4 w-4 text-blue-600" />
+                        <div>
+                          <p className="font-medium">{reading.user}</p>
+                          <p className="text-sm text-muted-foreground">{reading.value} units</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <Badge variant={reading.status === "confirmed" ? "default" : "secondary"}>
+                          {reading.status}
+                        </Badge>
+                        <span className="text-sm text-muted-foreground">{reading.date}</span>
                       </div>
                     </div>
-                    <div className="flex items-center space-x-2">
-                      <Badge variant={reading.status === "approved" ? "default" : "secondary"}>
-                        {reading.status}
-                      </Badge>
-                      <span className="text-sm text-muted-foreground">{reading.date}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -179,37 +277,45 @@ export default function AdminDashboardPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                {[
-                  { id: "ISS001", user: "Mike Wilson", issue: "Water pressure low", priority: "high", status: "open" },
-                  { id: "ISS002", user: "Sarah Davis", issue: "Billing discrepancy", priority: "medium", status: "in-progress" },
-                  { id: "ISS003", user: "Tom Brown", issue: "App login issues", priority: "low", status: "resolved" },
-                ].map((issue) => (
-                  <div key={issue.id} className="flex items-center justify-between p-3 border rounded-lg">
-                    <div className="flex items-center space-x-3">
-                      <AlertTriangle className={`h-4 w-4 ${
-                        issue.priority === "high" ? "text-red-600" : 
-                        issue.priority === "medium" ? "text-yellow-600" : "text-green-600"
-                      }`} />
-                      <div>
-                        <p className="font-medium">{issue.user}</p>
-                        <p className="text-sm text-muted-foreground">{issue.issue}</p>
+              {loading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin mr-2" />
+                  <span className="text-muted-foreground">Loading issues...</span>
+                </div>
+              ) : issues.length === 0 ? (
+                <div className="text-center py-8">
+                  <AlertTriangle className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                  <p className="text-muted-foreground">No issues found</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {issues.map((issue) => (
+                    <div key={issue.id} className="flex items-center justify-between p-3 border rounded-lg">
+                      <div className="flex items-center space-x-3">
+                        <AlertTriangle className={`h-4 w-4 ${
+                          issue.priority === "high" ? "text-red-600" : 
+                          issue.priority === "medium" ? "text-yellow-600" : "text-green-600"
+                        }`} />
+                        <div>
+                          <p className="font-medium">{issue.user}</p>
+                          <p className="text-sm text-muted-foreground">{issue.issue}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <Badge variant={
+                          issue.priority === "high" ? "destructive" : 
+                          issue.priority === "medium" ? "secondary" : "outline"
+                        }>
+                          {issue.priority}
+                        </Badge>
+                        <Badge variant={issue.status === "resolved" ? "default" : "secondary"}>
+                          {issue.status}
+                        </Badge>
                       </div>
                     </div>
-                    <div className="flex items-center space-x-2">
-                      <Badge variant={
-                        issue.priority === "high" ? "destructive" : 
-                        issue.priority === "medium" ? "secondary" : "outline"
-                      }>
-                        {issue.priority}
-                      </Badge>
-                      <Badge variant={issue.status === "resolved" ? "default" : "secondary"}>
-                        {issue.status}
-                      </Badge>
-                    </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
 
