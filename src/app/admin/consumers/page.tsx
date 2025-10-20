@@ -21,7 +21,6 @@ import {
   CheckCircle,
   XCircle,
   Clock,
-  UserPlus,
   Loader2,
   RefreshCw,
   Home,
@@ -36,16 +35,19 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { UserService, UserWithStatus } from "@/lib/user-service"
-import { supabase } from "@/lib/supabase"
+import { ConsumerService, ConsumerWithStatus } from "@/lib/consumer-service"
 import { useEffect, useState } from "react"
+import { AddConsumerDialog } from "@/components/add-consumer-dialog"
+import { ViewConsumerDetailsDialog } from "@/components/view-consumer-details-dialog"
 
 export default function ConsumerManagementPage() {
-  const [consumers, setConsumers] = useState<UserWithStatus[]>([])
+  const [consumers, setConsumers] = useState<ConsumerWithStatus[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
-  const [filteredConsumers, setFilteredConsumers] = useState<UserWithStatus[]>([])
+  const [filteredConsumers, setFilteredConsumers] = useState<ConsumerWithStatus[]>([])
+  const [selectedConsumer, setSelectedConsumer] = useState<ConsumerWithStatus | null>(null)
+  const [detailsDialogOpen, setDetailsDialogOpen] = useState(false)
 
   // Fetch consumers from Supabase
   const fetchConsumers = async () => {
@@ -54,7 +56,7 @@ export default function ConsumerManagementPage() {
       setLoading(true)
       setError(null)
       
-      const { data, error } = await UserService.getUsersByAccountType('consumer')
+      const { data, error } = await ConsumerService.getAllConsumers()
       
       console.log('📋 Fetch result:', { data, error })
       
@@ -66,7 +68,7 @@ export default function ConsumerManagementPage() {
       
       if (data) {
         console.log('📝 Formatting consumers...')
-        const formattedConsumers = data.map(consumer => UserService.formatUserForDisplay(consumer))
+        const formattedConsumers = data.map(consumer => ConsumerService.formatConsumerForDisplay(consumer))
         console.log('✨ Formatted consumers:', formattedConsumers)
         setConsumers(formattedConsumers)
         setFilteredConsumers(formattedConsumers)
@@ -83,19 +85,25 @@ export default function ConsumerManagementPage() {
     }
   }
 
-  // Handle consumer status update
-  const handleStatusUpdate = async (consumerId: string, isActive: boolean) => {
+  // Handle opening consumer details
+  const handleViewDetails = (consumer: ConsumerWithStatus) => {
+    setSelectedConsumer(consumer)
+    setDetailsDialogOpen(true)
+  }
+
+  // Handle consumer payment status update
+  const handleStatusUpdate = async (consumerId: string, paymentStatus: string) => {
     try {
-      const { error } = await UserService.updateUserStatus(consumerId, isActive)
+      const { error } = await ConsumerService.updateConsumerPaymentStatus(consumerId, paymentStatus)
       if (error) {
-        setError(error.message || 'Failed to update consumer status')
+        setError(error.message || 'Failed to update consumer payment status')
         return
       }
       // Refresh the consumers list
       await fetchConsumers()
     } catch (err) {
       setError('An unexpected error occurred')
-      console.error('Error updating consumer status:', err)
+      console.error('Error updating consumer payment status:', err)
     }
   }
 
@@ -108,9 +116,11 @@ export default function ConsumerManagementPage() {
     }
     
     const filtered = consumers.filter(consumer => 
-      consumer.full_name?.toLowerCase().includes(query.toLowerCase()) ||
-      consumer.email.toLowerCase().includes(query.toLowerCase()) ||
-      consumer.phone?.toLowerCase().includes(query.toLowerCase())
+      consumer.water_meter_no.toLowerCase().includes(query.toLowerCase()) ||
+      consumer.billing_month.toLowerCase().includes(query.toLowerCase()) ||
+      consumer.account?.email?.toLowerCase().includes(query.toLowerCase()) ||
+      consumer.account?.full_name?.toLowerCase().includes(query.toLowerCase()) ||
+      consumer.account?.full_address?.toLowerCase().includes(query.toLowerCase())
     )
     setFilteredConsumers(filtered)
   }
@@ -124,26 +134,16 @@ export default function ConsumerManagementPage() {
     })
   }
 
-  // Format last login date
-  const formatLastLogin = (dateString: string | null) => {
-    if (!dateString) return 'Never'
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    })
-  }
-
   const getStatusBadge = (status: string) => {
     switch (status) {
-      case "verified":
-        return <Badge variant="default" className="bg-green-100 text-green-800"><CheckCircle className="h-3 w-3 mr-1" />Verified</Badge>
-      case "pending":
-        return <Badge variant="secondary" className="bg-yellow-100 text-yellow-800"><Clock className="h-3 w-3 mr-1" />Pending</Badge>
-      case "suspended":
-        return <Badge variant="destructive"><XCircle className="h-3 w-3 mr-1" />Suspended</Badge>
+      case "paid":
+        return <Badge variant="default" className="bg-green-100 text-green-800"><CheckCircle className="h-3 w-3 mr-1" />Paid</Badge>
+      case "unpaid":
+        return <Badge variant="secondary" className="bg-yellow-100 text-yellow-800"><Clock className="h-3 w-3 mr-1" />Unpaid</Badge>
+      case "partial":
+        return <Badge variant="outline" className="bg-blue-100 text-blue-800"><Clock className="h-3 w-3 mr-1" />Partial</Badge>
+      case "overdue":
+        return <Badge variant="destructive"><XCircle className="h-3 w-3 mr-1" />Overdue</Badge>
       default:
         return <Badge variant="outline">{status}</Badge>
     }
@@ -171,10 +171,7 @@ export default function ConsumerManagementPage() {
               <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
               Refresh
             </Button>
-            <Button>
-              <UserPlus className="h-4 w-4 mr-2" />
-              Add New Consumer
-            </Button>
+            <AddConsumerDialog onConsumerAdded={fetchConsumers} />
           </div>
         </div>
 
@@ -233,11 +230,11 @@ export default function ConsumerManagementPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Consumer</TableHead>
+                    <TableHead>Water Meter</TableHead>
                     <TableHead>Contact</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Service Address</TableHead>
-                    <TableHead>Registration Date</TableHead>
-                    <TableHead>Last Active</TableHead>
+                    <TableHead>Consumption</TableHead>
+                    <TableHead>Amount Due</TableHead>
+                    <TableHead>Payment Status</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -247,30 +244,39 @@ export default function ConsumerManagementPage() {
                       <TableCell className="font-medium">
                         <div className="flex items-center space-x-2">
                           <Home className="h-4 w-4 text-muted-foreground" />
-                          <span>{consumer.full_name || 'No name provided'}</span>
+                          <span>{consumer.account?.full_name || 'No name provided'}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="text-sm font-mono">
+                          {consumer.water_meter_no}
                         </div>
                       </TableCell>
                       <TableCell>
                         <div className="space-y-1">
                           <div className="flex items-center space-x-1 text-sm">
                             <Mail className="h-3 w-3 text-muted-foreground" />
-                            <span>{consumer.email}</span>
+                            <span>{consumer.account?.email || 'No email provided'}</span>
                           </div>
-                          <div className="flex items-center space-x-1 text-sm text-muted-foreground">
-                            <Phone className="h-3 w-3 text-muted-foreground" />
-                            <span>{consumer.phone || 'No phone provided'}</span>
+                          <div className="text-sm text-muted-foreground">
+                            {consumer.account?.full_address || 'No address provided'}
                           </div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="text-sm">
+                          <div className="font-medium">{consumer.consumption_cubic_meters.toFixed(2)} cu.m</div>
+                          <div className="text-muted-foreground text-xs">
+                            {consumer.previous_reading} → {consumer.present_reading}
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="text-sm font-medium">
+                          ₱{consumer.total_amount_due.toFixed(2)}
                         </div>
                       </TableCell>
                       <TableCell>{getStatusBadge(consumer.status)}</TableCell>
-                      <TableCell>
-                        <div className="text-sm">
-                          <div className="font-medium">Service Address</div>
-                          <div className="text-muted-foreground">Not configured</div>
-                        </div>
-                      </TableCell>
-                      <TableCell>{formatDate(consumer.created_at)}</TableCell>
-                      <TableCell>{formatLastLogin(consumer.last_login_at)}</TableCell>
                       <TableCell className="text-right">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
@@ -281,29 +287,30 @@ export default function ConsumerManagementPage() {
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
                             <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                            <DropdownMenuItem>View Profile</DropdownMenuItem>
-                            <DropdownMenuItem>Edit Consumer</DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleViewDetails(consumer)}>
+                              View Details
+                            </DropdownMenuItem>
+                            <DropdownMenuItem>Edit Billing</DropdownMenuItem>
                             <DropdownMenuItem>View Meter Readings</DropdownMenuItem>
-                            <DropdownMenuItem>View Bills</DropdownMenuItem>
                             <DropdownMenuSeparator />
-                            {consumer.is_active ? (
+                            {consumer.payment_status === 'unpaid' ? (
                               <DropdownMenuItem 
-                                onClick={() => handleStatusUpdate(consumer.id, false)}
-                                className="text-orange-600"
+                                onClick={() => handleStatusUpdate(consumer.id, 'paid')}
+                                className="text-green-600"
                               >
-                                Suspend Service
+                                Mark as Paid
                               </DropdownMenuItem>
                             ) : (
                               <DropdownMenuItem 
-                                onClick={() => handleStatusUpdate(consumer.id, true)}
-                                className="text-green-600"
+                                onClick={() => handleStatusUpdate(consumer.id, 'unpaid')}
+                                className="text-orange-600"
                               >
-                                Activate Service
+                                Mark as Unpaid
                               </DropdownMenuItem>
                             )}
                             <DropdownMenuSeparator />
                             <DropdownMenuItem className="text-red-600">
-                              Delete Account
+                              Delete Record
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
@@ -316,6 +323,13 @@ export default function ConsumerManagementPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Consumer Details Dialog */}
+      <ViewConsumerDetailsDialog
+        consumer={selectedConsumer}
+        open={detailsDialogOpen}
+        onOpenChange={setDetailsDialogOpen}
+      />
     </AdminLayout>
   )
 }
