@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { BAWASABillingCalculator } from '@/lib/bawasa-billing-calculator'
+import bcrypt from 'bcryptjs'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -17,6 +18,7 @@ export async function POST(request: NextRequest) {
       full_name,
       phone,
       address,
+      registered_voter,
       water_meter_no,
       billing_month,
       meter_reading_date,
@@ -113,13 +115,20 @@ export async function POST(request: NextRequest) {
 
     console.log('✅ Water billing record created:', billingData_result.id)
 
-    // Step 2: Create account record in accounts table
+    // Step 2: Hash the password before saving
+    const saltRounds = 12
+    const hashedPassword = await bcrypt.hash(password, saltRounds)
+    console.log('✅ Password hashed successfully')
+
+    // Step 3: Create account record in accounts table
     const accountData = {
       email,
-      password, // Note: In production, this should be hashed
+      password: hashedPassword, // Now properly hashed
       consumer_id: billingData_result.id, // Foreign key reference to bawasa_consumers
       full_name,
-      full_address: address || null
+      full_address: address || null,
+      mobile_no: phone || null, // Add phone number to mobile_no column
+      registered_voter: registered_voter || 'no' // Add registered voter status
     }
 
     const { data: accountData_result, error: accountError } = await supabase
