@@ -37,17 +37,17 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { MeterReaderService, MeterReaderWithUser } from "@/lib/meter-reader-service"
+import { MeterReaderService, MeterReaderUser } from "@/lib/meter-reader-service"
 import { supabase } from "@/lib/supabase"
 import { useEffect, useState } from "react"
 import { AddMeterReaderDialog } from "@/components/add-meter-reader-dialog"
 
 export default function MeterReaderManagementPage() {
-  const [meterReaders, setMeterReaders] = useState<MeterReaderWithUser[]>([])
+  const [meterReaders, setMeterReaders] = useState<MeterReaderUser[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
-  const [filteredMeterReaders, setFilteredMeterReaders] = useState<MeterReaderWithUser[]>([])
+  const [filteredMeterReaders, setFilteredMeterReaders] = useState<MeterReaderUser[]>([])
 
   // Fetch meter readers from Supabase
   const fetchMeterReaders = async () => {
@@ -83,22 +83,6 @@ export default function MeterReaderManagementPage() {
     }
   }
 
-  // Handle meter reader status update
-  const handleStatusUpdate = async (readerId: string, isActive: boolean) => {
-    try {
-      const { error } = await MeterReaderService.updateMeterReaderStatus(readerId, isActive)
-      if (error) {
-        setError(error.message || 'Failed to update meter reader status')
-        return
-      }
-      // Refresh the meter readers list
-      await fetchMeterReaders()
-    } catch (err) {
-      setError('An unexpected error occurred')
-      console.error('Error updating meter reader status:', err)
-    }
-  }
-
   // Handle search
   const handleSearch = (query: string) => {
     setSearchQuery(query)
@@ -109,9 +93,8 @@ export default function MeterReaderManagementPage() {
     
     const filtered = meterReaders.filter(reader => 
       reader.full_name?.toLowerCase().includes(query.toLowerCase()) ||
-      reader.email.toLowerCase().includes(query.toLowerCase()) ||
-      reader.phone?.toLowerCase().includes(query.toLowerCase()) ||
-      reader.employee_id?.toLowerCase().includes(query.toLowerCase())
+      reader.email?.toLowerCase().includes(query.toLowerCase()) ||
+      reader.mobile_no?.toString().includes(query)
     )
     setFilteredMeterReaders(filtered)
   }
@@ -135,14 +118,6 @@ export default function MeterReaderManagementPage() {
       hour: '2-digit',
       minute: '2-digit'
     })
-  }
-
-  const getStatusBadge = (isActive: boolean) => {
-    if (isActive) {
-      return <Badge variant="default" className="bg-green-100 text-green-800"><CheckCircle className="h-3 w-3 mr-1" />Active</Badge>
-    } else {
-      return <Badge variant="destructive"><XCircle className="h-3 w-3 mr-1" />Inactive</Badge>
-    }
   }
 
   // Load meter readers on component mount
@@ -226,14 +201,12 @@ export default function MeterReaderManagementPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Meter Reader</TableHead>
-                    <TableHead>Employee ID</TableHead>
-                    <TableHead>Contact</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Assigned Route</TableHead>
-                    <TableHead>Territory</TableHead>
-                    <TableHead>Last Reading</TableHead>
-                    <TableHead>Performance</TableHead>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Email</TableHead>
+                    <TableHead>Mobile Number</TableHead>
+                    <TableHead>Address</TableHead>
+                    <TableHead>Created</TableHead>
+                    <TableHead>Last Signed In</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -242,51 +215,31 @@ export default function MeterReaderManagementPage() {
                     <TableRow key={reader.id}>
                       <TableCell className="font-medium">
                         <div className="flex items-center space-x-2">
-                          <Droplets className="h-4 w-4 text-blue-600" />
+                          <Users className="h-4 w-4 text-blue-600" />
                           <span>{reader.full_name || 'No name provided'}</span>
                         </div>
                       </TableCell>
                       <TableCell>
-                        <div className="flex items-center space-x-1">
-                          <Activity className="h-3 w-3 text-muted-foreground" />
-                          <span className="text-sm font-mono">{reader.employee_id}</span>
+                        <div className="text-sm">{reader.email || 'No email provided'}</div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="text-sm">
+                          {reader.mobile_no ? reader.mobile_no.toString() : 'No phone provided'}
                         </div>
                       </TableCell>
                       <TableCell>
-                        <div className="space-y-1">
-                          <div className="text-sm">{reader.email}</div>
-                          <div className="text-sm text-muted-foreground">
-                            {reader.phone || 'No phone provided'}
-                          </div>
-                        </div>
-                      </TableCell>
-                      <TableCell>{getStatusBadge(reader.is_active)}</TableCell>
-                      <TableCell>
-                        <div className="flex items-center space-x-1">
-                          <MapPin className="h-3 w-3 text-muted-foreground" />
-                          <span className="text-sm">{reader.assigned_route || 'Not assigned'}</span>
+                        <div className="text-sm max-w-xs truncate">
+                          {reader.full_address || 'No address provided'}
                         </div>
                       </TableCell>
                       <TableCell>
-                        <div className="flex items-center space-x-1">
-                          <MapPin className="h-3 w-3 text-muted-foreground" />
-                          <span className="text-sm">{reader.territory || 'Not assigned'}</span>
+                        <div className="text-sm">
+                          {formatDate(reader.created_at)}
                         </div>
                       </TableCell>
                       <TableCell>
-                        <div className="flex items-center space-x-1">
-                          <Calendar className="h-3 w-3 text-muted-foreground" />
-                          <span className="text-sm">
-                            {reader.last_reading_date ? formatDate(reader.last_reading_date) : 'No readings'}
-                          </span>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center space-x-1">
-                          <Activity className="h-3 w-3 text-muted-foreground" />
-                          <span className="text-sm">
-                            {reader.performance_rating > 0 ? `${reader.performance_rating}/5.0` : 'Not rated'}
-                          </span>
+                        <div className="text-sm">
+                          {formatLastLogin(reader.last_signed_in)}
                         </div>
                       </TableCell>
                       <TableCell className="text-right">
@@ -301,27 +254,10 @@ export default function MeterReaderManagementPage() {
                             <DropdownMenuLabel>Actions</DropdownMenuLabel>
                             <DropdownMenuItem>View Profile</DropdownMenuItem>
                             <DropdownMenuItem>Edit Reader</DropdownMenuItem>
-                            <DropdownMenuItem>Assign Route</DropdownMenuItem>
                             <DropdownMenuItem>View Readings</DropdownMenuItem>
                             <DropdownMenuSeparator />
-                            {reader.is_active ? (
-                              <DropdownMenuItem 
-                                onClick={() => handleStatusUpdate(reader.id, false)}
-                                className="text-orange-600"
-                              >
-                                Deactivate Reader
-                              </DropdownMenuItem>
-                            ) : (
-                              <DropdownMenuItem 
-                                onClick={() => handleStatusUpdate(reader.id, true)}
-                                className="text-green-600"
-                              >
-                                Activate Reader
-                              </DropdownMenuItem>
-                            )}
-                            <DropdownMenuSeparator />
                             <DropdownMenuItem className="text-red-600">
-                              Delete Account
+                              Delete Reader
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
@@ -337,3 +273,4 @@ export default function MeterReaderManagementPage() {
     </AdminLayout>
   )
 }
+
