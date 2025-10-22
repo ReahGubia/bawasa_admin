@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import bcrypt from 'bcryptjs'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -10,7 +11,7 @@ const supabase = createClient(supabaseUrl, supabaseAnonKey)
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { email, password, full_name, phone, assigned_route, territory, supervisor_id, hire_date, notes } = body
+    const { email, password, full_name, mobile_no, full_address } = body
 
     // Validate required fields
     if (!email || !password || !full_name) {
@@ -20,104 +21,80 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    console.log('🚀 Creating meter reader via signup flow...', { email, full_name })
+    console.log('🚀 Creating meter reader account...', { email, full_name })
 
-    // Step 1: Create auth user using signup
-    const { data: authData, error: authError } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: {
-          full_name,
-          account_type: 'staff'
-        }
-      }
-    })
+    // Check if email already exists
+    const { data: existingAccount, error: checkError } = await supabase
+      .from('meter_reader_accounts')
+      .select('email')
+      .eq('email', email)
+      .single()
 
-    if (authError) {
-      console.error('❌ Auth user creation failed:', authError)
+    if (checkError && checkError.code !== 'PGRST116') { // PGRST116 = no rows returned
+      console.error('❌ Error checking existing email:', checkError)
       return NextResponse.json(
-        { error: authError.message },
-        { status: 400 }
-      )
-    }
-
-    if (!authData.user) {
-      console.error('❌ No user returned from auth creation')
-      return NextResponse.json(
-        { error: 'Failed to create auth user' },
+        { error: 'Failed to validate email' },
         { status: 500 }
       )
     }
 
-    console.log('✅ Auth user created:', authData.user.id)
-
-    // Step 2: Create user profile
-    const { data: userData, error: userError } = await supabase
-      .from('users')
-      .insert({
-        auth_user_id: authData.user.id,
-        email,
-        full_name,
-        phone,
-        account_type: 'staff'
-      })
-      .select()
-      .single()
-
-    if (userError) {
-      console.error('❌ User profile creation failed:', userError)
+    if (existingAccount) {
+      console.error('❌ Email already exists:', email)
       return NextResponse.json(
-        { error: userError.message },
+        { error: `Email ${email} already exists. Please use a different email.` },
         { status: 400 }
       )
     }
 
-    console.log('✅ User profile created:', userData.id)
+    console.log('✅ Email is unique:', email)
 
-    // Step 3: Create meter reader record
-    const { data: meterReaderData, error: meterReaderError } = await supabase
-      .from('meter_readers')
-      .insert({
-        user_id: userData.id,
-        assigned_route: assigned_route || null,
-        territory: territory || null,
-        supervisor_id: supervisor_id || null,
-        hire_date: hire_date || null,
-        notes: notes || null
-      })
+    // Hash the password before saving
+    const saltRounds = 12
+    const hashedPassword = await bcrypt.hash(password, saltRounds)
+    console.log('✅ Password hashed successfully')
+
+    // Create meter reader account in meter_reader_accounts table
+    const meterReaderData = {
+      email,
+      password: hashedPassword, // Now properly hashed
+      full_name,
+      full_address: full_address || null,
+      mobile_no: mobile_no ? parseInt(mobile_no) : null,
+      created_at: new Date().toISOString(),
+      last_signed_in: null
+    }
+
+    const { data: meterReaderResult, error: meterReaderError } = await supabase
+      .from('meter_reader_accounts')
+      .insert(meterReaderData)
       .select()
       .single()
 
     if (meterReaderError) {
-      console.error('❌ Meter reader record creation failed:', meterReaderError)
-      // Clean up user profile
-      await supabase.from('users').delete().eq('id', userData.id)
+      console.error('❌ Meter reader account creation failed:', meterReaderError)
       return NextResponse.json(
-        { error: meterReaderError.message },
-        { status: 400 }
-      )
-    }
-
-    console.log('✅ Meter reader record created:', meterReaderData.id)
-
-    // Step 4: Fetch the complete meter reader with user info
-    const { data: completeMeterReader, error: fetchError } = await supabase
-      .from('meter_readers_with_user')
-      .select('*')
-      .eq('id', meterReaderData.id)
-      .single()
-
-    if (fetchError) {
-      console.error('❌ Failed to fetch complete meter reader:', fetchError)
-      return NextResponse.json(
-        { error: fetchError.message },
+        { error: `Failed to create meter reader account: ${meterReaderError.message}` },
         { status: 500 }
       )
     }
 
-    console.log('✅ Meter reader creation completed successfully')
-    return NextResponse.json({ data: completeMeterReader })
+    console.log('✅ Meter reader account created successfully:', meterReaderResult.id)
+    
+    // Return user data without password
+    const responseData = {
+      id: meterReaderResult.id,
+      email: meterReaderResult.email,
+      full_name: meterReaderResult.full_name,
+      full_address: meterReaderResult.full_address,
+      mobile_no: meterReaderResult.mobile_no,
+      created_at: meterReaderResult.created_at
+    }
+
+    return NextResponse.json({ 
+      success: true,
+      data: responseData,
+      message: 'Meter reader account created successfully'
+    })
 
   } catch (error) {
     console.error('💥 Unexpected error in API route:', error)
