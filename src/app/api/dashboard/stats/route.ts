@@ -18,23 +18,23 @@ export async function GET() {
       billsResult,
       issuesResult
     ] = await Promise.all([
-      // Total users count
+      // Total users count (from accounts table)
       supabase
-        .from('users')
+        .from('accounts')
         .select('id', { count: 'exact', head: true }),
       
-      // Total meter readings count
+      // Total meter readings count (from bawasa_consumers table)
       supabase
-        .from('meter_readings')
+        .from('bawasa_consumers')
         .select('id', { count: 'exact', head: true }),
       
-      // Pending bills count
+      // Pending bills count (from bawasa_consumers table with unpaid status)
       supabase
-        .from('bills')
+        .from('bawasa_consumers')
         .select('id', { count: 'exact', head: true })
-        .eq('status', 'pending'),
+        .in('payment_status', ['unpaid', 'partial', 'overdue']),
       
-      // Open issues count
+      // Open issues count (assuming issues table exists)
       supabase
         .from('issues')
         .select('id', { count: 'exact', head: true })
