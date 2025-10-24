@@ -12,7 +12,7 @@ export async function GET() {
     console.log('📊 Fetching recent issues...')
 
     // Fetch recent issues with user information
-    // Note: issues.user_id references auth.users, so we need to join through users table
+    // Note: This assumes an issues table exists - if not, this will return empty array
     const { data: issues, error } = await supabase
       .from('issues')
       .select(`
@@ -30,18 +30,29 @@ export async function GET() {
 
     if (error) {
       console.error('❌ Error fetching issues:', error)
+      // If issues table doesn't exist, return empty array instead of error
+      if (error.code === 'PGRST106') {
+        console.log('ℹ️ Issues table not found, returning empty array')
+        return NextResponse.json({ data: [] })
+      }
       return NextResponse.json(
         { error: 'Failed to fetch issues' },
         { status: 500 }
       )
     }
 
-    // Get user information separately since issues references auth.users directly
+    // If no issues found, return empty array
+    if (!issues || issues.length === 0) {
+      console.log('ℹ️ No issues found')
+      return NextResponse.json({ data: [] })
+    }
+
+    // Get user information from accounts table
     const userIds = issues?.map(issue => issue.user_id) || []
     const { data: users, error: usersError } = await supabase
-      .from('users')
-      .select('auth_user_id, full_name, email')
-      .in('auth_user_id', userIds)
+      .from('accounts')
+      .select('id, full_name, email')
+      .in('id', userIds)
 
     if (usersError) {
       console.error('❌ Error fetching users for issues:', usersError)
@@ -52,13 +63,13 @@ export async function GET() {
     }
 
     // Create a map for quick user lookup
-    const userMap = new Map(users?.map(user => [user.auth_user_id, user]) || [])
+    const userMap = new Map(users?.map(user => [user.id, user]) || [])
 
     // Transform the data to match the expected format
     const formattedIssues = issues?.map(issue => {
       const user = userMap.get(issue.user_id)
       return {
-        id: issue.issue_number,
+        id: issue.issue_number || issue.id,
         user: user?.full_name || 'Unknown User',
         issue: issue.title,
         priority: issue.priority,
