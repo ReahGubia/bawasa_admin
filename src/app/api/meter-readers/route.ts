@@ -23,9 +23,9 @@ export async function POST(request: NextRequest) {
 
     console.log('🚀 Creating meter reader account...', { email, full_name })
 
-    // Check if email already exists
+    // Check if email already exists in accounts table
     const { data: existingAccount, error: checkError } = await supabase
-      .from('meter_reader_accounts')
+      .from('accounts')
       .select('email')
       .eq('email', email)
       .single()
@@ -48,46 +48,70 @@ export async function POST(request: NextRequest) {
 
     console.log('✅ Email is unique:', email)
 
-    // Hash the password before saving
+    // Step 1: Hash the password before saving
     const saltRounds = 12
     const hashedPassword = await bcrypt.hash(password, saltRounds)
     console.log('✅ Password hashed successfully')
 
-    // Create meter reader account in meter_reader_accounts table
-    const meterReaderData = {
+    // Step 2: Create account record in accounts table first
+    const accountData = {
       email,
       password: hashedPassword, // Now properly hashed
       full_name,
       full_address: full_address || null,
       mobile_no: mobile_no ? parseInt(mobile_no) : null,
-      created_at: new Date().toISOString(),
-      last_signed_in: null
+      user_type: 'meter_reader' // Set user type as meter_reader for admin-created accounts
+    }
+
+    const { data: accountResult, error: accountError } = await supabase
+      .from('accounts')
+      .insert(accountData)
+      .select()
+      .single()
+
+    if (accountError) {
+      console.error('❌ Account creation failed:', accountError)
+      return NextResponse.json(
+        { error: `Failed to create account: ${accountError.message}` },
+        { status: 500 }
+      )
+    }
+
+    console.log('✅ Account created successfully:', accountResult.id)
+
+    // Step 3: Create meter reader record in bawasa_meter_reader table
+    const meterReaderData = {
+      status: 'not_assigned', // Default status for new meter readers
+      reader_id: accountResult.id, // Foreign key reference to accounts table (the meter reader's account)
+      assigned_to: null // No consumer assigned initially
     }
 
     const { data: meterReaderResult, error: meterReaderError } = await supabase
-      .from('meter_reader_accounts')
+      .from('bawasa_meter_reader')
       .insert(meterReaderData)
       .select()
       .single()
 
     if (meterReaderError) {
-      console.error('❌ Meter reader account creation failed:', meterReaderError)
+      console.error('❌ Meter reader record creation failed:', meterReaderError)
       return NextResponse.json(
-        { error: `Failed to create meter reader account: ${meterReaderError.message}` },
+        { error: `Account created but meter reader record failed: ${meterReaderError.message}` },
         { status: 500 }
       )
     }
 
-    console.log('✅ Meter reader account created successfully:', meterReaderResult.id)
+    console.log('✅ Meter reader record created successfully:', meterReaderResult.id)
     
     // Return user data without password
     const responseData = {
-      id: meterReaderResult.id,
-      email: meterReaderResult.email,
-      full_name: meterReaderResult.full_name,
-      full_address: meterReaderResult.full_address,
-      mobile_no: meterReaderResult.mobile_no,
-      created_at: meterReaderResult.created_at
+      id: accountResult.id,
+      email: accountResult.email,
+      full_name: accountResult.full_name,
+      full_address: accountResult.full_address,
+      mobile_no: accountResult.mobile_no,
+      created_at: accountResult.created_at,
+      meter_reader_id: meterReaderResult.id,
+      status: meterReaderResult.status
     }
 
     return NextResponse.json({ 

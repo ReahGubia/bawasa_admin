@@ -30,9 +30,10 @@ export interface Account {
   email: string | null
   password: string | null
   created_at: string
-  consumer_id: string | null
   full_name: string | null
   full_address: string | null
+  mobile_no: number | null
+  user_type: string | null
 }
 
 export interface ConsumerWithAccount extends Consumer {
@@ -74,7 +75,7 @@ export class ConsumerService {
       // Combine the data
       const combinedData = consumers?.map(consumer => ({
         ...consumer,
-        account: accounts?.find(account => account.consumer_id === consumer.id)
+        account: accounts?.find(account => account.id === consumer.consumer_id)
       })) || []
 
       console.log('✅ Successfully fetched consumers:', combinedData.length, 'consumers')
@@ -171,7 +172,7 @@ export class ConsumerService {
       // Combine the data
       const combinedData = consumers?.map(consumer => ({
         ...consumer,
-        account: accounts?.find(account => account.consumer_id === consumer.id)
+        account: accounts?.find(account => account.id === consumer.consumer_id)
       })) || []
 
       return { data: combinedData, error: null }
