@@ -13,14 +13,15 @@ export async function GET() {
 
     // Fetch recent meter readings with user information
     const { data: meterReadings, error } = await supabase
-      .from('meter_readings')
+      .from('bawasa_consumers')
       .select(`
         id,
-        reading_value,
-        reading_date,
-        status,
+        water_meter_no,
+        present_reading,
+        meter_reading_date,
+        payment_status,
         created_at,
-        users!user_id_ref (
+        accounts!consumer_id (
           full_name,
           email
         )
@@ -39,10 +40,10 @@ export async function GET() {
     // Transform the data to match the expected format
     const formattedReadings = meterReadings?.map(reading => ({
       id: reading.id,
-      user: reading.users?.[0]?.full_name || 'Unknown User',
-      value: reading.reading_value.toString(),
-      status: reading.status,
-      date: new Date(reading.reading_date).toLocaleDateString()
+      user: reading.accounts?.[0]?.full_name || 'Unknown User',
+      value: reading.present_reading?.toString() || '0',
+      status: reading.payment_status || 'unknown',
+      date: new Date(reading.meter_reading_date).toLocaleDateString()
     })) || []
 
     console.log('✅ Recent meter readings fetched successfully')
