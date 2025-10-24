@@ -66,13 +66,44 @@ export async function POST(request: NextRequest) {
 
     console.log('✅ Water meter number is unique:', water_meter_no)
 
-    // Calculate consumption for billing calculations
+    // Step 1: Hash the password before saving
+    const saltRounds = 12
+    const hashedPassword = await bcrypt.hash(password, saltRounds)
+    console.log('✅ Password hashed successfully')
+
+    // Step 2: Create account record in accounts table first
+    const accountData = {
+      email,
+      password: hashedPassword, // Now properly hashed
+      full_name,
+      full_address: address || null,
+      mobile_no: phone || null, // Add phone number to mobile_no column
+      user_type: 'consumer' // Set user type as consumer for admin-created accounts
+    }
+
+    const { data: accountData_result, error: accountError } = await supabase
+      .from('accounts')
+      .insert(accountData)
+      .select()
+      .single()
+
+    if (accountError) {
+      console.error('❌ Account record creation failed:', accountError)
+      return NextResponse.json(
+        { error: `Failed to create account record: ${accountError.message}` },
+        { status: 500 }
+      )
+    }
+
+    console.log('✅ Account record created:', accountData_result.id)
+
+    // Step 3: Calculate consumption for billing calculations
     const consumption = parseFloat(consumption_cubic_meters) || 0
     
     // Use BAWASA billing calculator for accurate calculations
     const billingCalculation = BAWASABillingCalculator.calculateBilling(consumption)
     
-    // Create water billing record directly
+    // Step 4: Create water billing record with consumer_id foreign key
     const billingData = {
       water_meter_no,
       billing_month: billing_month || new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
@@ -96,7 +127,9 @@ export async function POST(request: NextRequest) {
       arrears_after_due_date: 0,
       
       payment_status: payment_status || 'unpaid',
-      amount_paid: 0
+      amount_paid: 0,
+      registered_voter: registered_voter === 'yes' || registered_voter === true,
+      consumer_id: accountData_result.id // Foreign key reference to accounts table
     }
 
     const { data: billingData_result, error: billingError } = await supabase
@@ -108,44 +141,12 @@ export async function POST(request: NextRequest) {
     if (billingError) {
       console.error('❌ Water billing creation failed:', billingError)
       return NextResponse.json(
-        { error: `Failed to create water billing record: ${billingError.message}` },
+        { error: `Account created but water billing record failed: ${billingError.message}` },
         { status: 500 }
       )
     }
 
     console.log('✅ Water billing record created:', billingData_result.id)
-
-    // Step 2: Hash the password before saving
-    const saltRounds = 12
-    const hashedPassword = await bcrypt.hash(password, saltRounds)
-    console.log('✅ Password hashed successfully')
-
-    // Step 3: Create account record in accounts table
-    const accountData = {
-      email,
-      password: hashedPassword, // Now properly hashed
-      consumer_id: billingData_result.id, // Foreign key reference to bawasa_consumers
-      full_name,
-      full_address: address || null,
-      mobile_no: phone || null, // Add phone number to mobile_no column
-      registered_voter: registered_voter || 'no' // Add registered voter status
-    }
-
-    const { data: accountData_result, error: accountError } = await supabase
-      .from('accounts')
-      .insert(accountData)
-      .select()
-      .single()
-
-    if (accountError) {
-      console.error('❌ Account record creation failed:', accountError)
-      return NextResponse.json(
-        { error: `Water billing created but account record failed: ${accountError.message}` },
-        { status: 500 }
-      )
-    }
-
-    console.log('✅ Account record created:', accountData_result.id)
 
     return NextResponse.json({
       success: true,
