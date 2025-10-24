@@ -81,7 +81,7 @@ export default function MeterReadingsPage() {
     }
   }
 
-  const handleStatusUpdate = async (readingId: string, newStatus: 'confirmed' | 'rejected') => {
+  const handleStatusUpdate = async (readingId: string, newStatus: 'unpaid' | 'partial' | 'paid' | 'overdue') => {
     if (!currentUser) return
 
     try {
@@ -123,7 +123,7 @@ export default function MeterReadingsPage() {
       if (status === 'all') {
         await loadMeterReadings()
       } else {
-        const readings = await MeterReadingsService.getMeterReadingsByStatus(status as 'pending' | 'confirmed' | 'rejected')
+        const readings = await MeterReadingsService.getMeterReadingsByStatus(status as 'unpaid' | 'partial' | 'paid' | 'overdue')
         // Convert to LatestMeterReadingByUser format by grouping
         const groupedReadings = groupReadingsByUser(readings)
         setMeterReadings(groupedReadings)
@@ -139,12 +139,12 @@ export default function MeterReadingsPage() {
   const groupReadingsByUser = (readings: MeterReadingWithUser[]): LatestMeterReadingByUser[] => {
     const userGroups = new Map<string, MeterReadingWithUser[]>()
     
-    // Group readings by user_id_ref
+    // Group readings by consumer_id
     readings.forEach(reading => {
-      if (!userGroups.has(reading.user_id_ref)) {
-        userGroups.set(reading.user_id_ref, [])
+      if (!userGroups.has(reading.consumer_id)) {
+        userGroups.set(reading.consumer_id, [])
       }
-      userGroups.get(reading.user_id_ref)!.push(reading)
+      userGroups.get(reading.consumer_id)!.push(reading)
     })
 
     // Get latest reading for each user and add total count
@@ -165,7 +165,7 @@ export default function MeterReadingsPage() {
 
   const handleUserClick = (reading: LatestMeterReadingByUser) => {
     setSelectedUser({
-      id: reading.user_id_ref,
+      id: reading.consumer_id,
       name: reading.user_name,
       email: reading.user_email
     })
@@ -174,7 +174,7 @@ export default function MeterReadingsPage() {
 
   // Filter readings based on current filters
   const filteredReadings = meterReadings.filter(reading => {
-    if (statusFilter !== 'all' && reading.status !== statusFilter) {
+    if (statusFilter !== 'all' && reading.payment_status !== statusFilter) {
       return false
     }
     return true
@@ -182,12 +182,14 @@ export default function MeterReadingsPage() {
 
   const getStatusBadge = (status: string) => {
     switch (status) {
-      case "confirmed":
-        return <Badge variant="default" className="bg-green-100 text-green-800"><CheckCircle className="h-3 w-3 mr-1" />Confirmed</Badge>
-      case "pending":
-        return <Badge variant="secondary" className="bg-yellow-100 text-yellow-800"><Clock className="h-3 w-3 mr-1" />Pending</Badge>
-      case "rejected":
-        return <Badge variant="destructive"><XCircle className="h-3 w-3 mr-1" />Rejected</Badge>
+      case "paid":
+        return <Badge variant="default" className="bg-green-100 text-green-800"><CheckCircle className="h-3 w-3 mr-1" />Paid</Badge>
+      case "unpaid":
+        return <Badge variant="secondary" className="bg-yellow-100 text-yellow-800"><Clock className="h-3 w-3 mr-1" />Unpaid</Badge>
+      case "partial":
+        return <Badge variant="secondary" className="bg-blue-100 text-blue-800"><Clock className="h-3 w-3 mr-1" />Partial</Badge>
+      case "overdue":
+        return <Badge variant="destructive"><XCircle className="h-3 w-3 mr-1" />Overdue</Badge>
       default:
         return <Badge variant="outline">{status}</Badge>
     }
@@ -243,14 +245,17 @@ export default function MeterReadingsPage() {
                   <DropdownMenuItem onClick={() => handleFilterByStatus('all')}>
                     All Readings
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => handleFilterByStatus('pending')}>
-                    Pending
+                  <DropdownMenuItem onClick={() => handleFilterByStatus('unpaid')}>
+                    Unpaid
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => handleFilterByStatus('confirmed')}>
-                    Confirmed
+                  <DropdownMenuItem onClick={() => handleFilterByStatus('partial')}>
+                    Partial
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => handleFilterByStatus('rejected')}>
-                    Rejected
+                  <DropdownMenuItem onClick={() => handleFilterByStatus('paid')}>
+                    Paid
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleFilterByStatus('overdue')}>
+                    Overdue
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -279,9 +284,9 @@ export default function MeterReadingsPage() {
                     <TableHead>Latest Reading ID</TableHead>
                     <TableHead>User</TableHead>
                     <TableHead>Total Readings</TableHead>
-                    <TableHead>Meter Type</TableHead>
-                    <TableHead>Latest Value</TableHead>
-                    <TableHead>Latest Reading Date</TableHead>
+                    <TableHead>Water Meter No</TableHead>
+                    <TableHead>Present Reading</TableHead>
+                    <TableHead>Reading Date</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Last Submitted</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
@@ -314,11 +319,11 @@ export default function MeterReadingsPage() {
                           </Badge>
                         </TableCell>
                         <TableCell>
-                          <Badge variant="outline">{reading.meter_type}</Badge>
+                          <Badge variant="outline">{reading.water_meter_no}</Badge>
                         </TableCell>
-                        <TableCell className="font-mono">{reading.reading_value.toLocaleString()}</TableCell>
-                        <TableCell>{new Date(reading.reading_date).toLocaleDateString()}</TableCell>
-                        <TableCell>{getStatusBadge(reading.status)}</TableCell>
+                        <TableCell className="font-mono">{reading.present_reading?.toLocaleString() || '0'}</TableCell>
+                        <TableCell>{new Date(reading.meter_reading_date).toLocaleDateString()}</TableCell>
+                        <TableCell>{getStatusBadge(reading.payment_status)}</TableCell>
                         <TableCell>{new Date(reading.created_at).toLocaleDateString()}</TableCell>
                         <TableCell className="text-right">
                           <DropdownMenu>
@@ -334,19 +339,19 @@ export default function MeterReadingsPage() {
                                 <Eye className="h-4 w-4 mr-2" />
                                 View Details
                               </DropdownMenuItem>
-                              {reading.status === 'pending' && (
+                              {reading.payment_status === 'unpaid' && (
                                 <>
                                   <DropdownMenuItem 
-                                    onClick={() => handleStatusUpdate(reading.id, 'confirmed')}
+                                    onClick={() => handleStatusUpdate(reading.id, 'paid')}
                                   >
                                     <CheckCircle className="h-4 w-4 mr-2" />
-                                    Confirm Reading
+                                    Mark as Paid
                                   </DropdownMenuItem>
                                   <DropdownMenuItem 
-                                    onClick={() => handleStatusUpdate(reading.id, 'rejected')}
+                                    onClick={() => handleStatusUpdate(reading.id, 'partial')}
                                   >
                                     <XCircle className="h-4 w-4 mr-2" />
-                                    Reject Reading
+                                    Mark as Partial
                                   </DropdownMenuItem>
                                 </>
                               )}
