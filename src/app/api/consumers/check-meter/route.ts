@@ -19,9 +19,9 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Check if water meter number already exists
+    // Check if water meter number already exists in consumers table
     const { data: existingMeter, error } = await supabase
-      .from('bawasa_consumers')
+      .from('consumers')
       .select('water_meter_no')
       .eq('water_meter_no', water_meter_no)
       .single()

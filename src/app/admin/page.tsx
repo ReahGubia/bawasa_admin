@@ -8,19 +8,17 @@ import {
   Droplets, 
   CreditCard, 
   AlertTriangle, 
-  Activity,
-  Calendar,
-  CheckCircle,
-  DollarSign,
   Loader2
 } from "lucide-react"
 import { useEffect, useState } from "react"
-import { DashboardService, DashboardStats, MeterReading, Issue } from "@/lib/dashboard-service"
+import { DashboardService, DashboardStats, MeterReading, Issue, RevenueStats } from "@/lib/dashboard-service"
+import { RevenueChart } from "@/components/revenue-chart"
 
 export default function AdminDashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [meterReadings, setMeterReadings] = useState<MeterReading[]>([])
   const [issues, setIssues] = useState<Issue[]>([])
+  const [revenueStats, setRevenueStats] = useState<RevenueStats | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -31,10 +29,11 @@ export default function AdminDashboardPage() {
         setError(null)
 
         // Fetch all dashboard data in parallel
-        const [statsResult, meterReadingsResult, issuesResult] = await Promise.all([
+        const [statsResult, meterReadingsResult, issuesResult, revenueResult] = await Promise.all([
           DashboardService.getStats(),
           DashboardService.getRecentMeterReadings(),
-          DashboardService.getRecentIssues()
+          DashboardService.getRecentIssues(),
+          DashboardService.getRevenueStats()
         ])
 
         if (statsResult.error) {
@@ -46,10 +45,14 @@ export default function AdminDashboardPage() {
         if (issuesResult.error) {
           throw new Error(`Failed to fetch issues: ${issuesResult.error.message}`)
         }
+        if (revenueResult.error) {
+          throw new Error(`Failed to fetch revenue: ${revenueResult.error.message}`)
+        }
 
         setStats(statsResult.data || null)
         setMeterReadings(meterReadingsResult.data || [])
         setIssues(issuesResult.data || [])
+        setRevenueStats(revenueResult.data || null)
       } catch (err) {
         console.error('Error fetching dashboard data:', err)
         setError(err instanceof Error ? err.message : 'An unexpected error occurred')
@@ -172,10 +175,13 @@ export default function AdminDashboardPage() {
           </Card>
         </div>
 
+        {/* Revenue Chart */}
+        <RevenueChart revenueStats={revenueStats} loading={loading} />
+
         {/* Main Content Grid */}
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-6 md:grid-cols-2">
           {/* Recent Meter Readings */}
-          <Card className="col-span-2">
+          <Card>
             <CardHeader>
               <CardTitle>Recent Meter Readings</CardTitle>
               <CardDescription>
@@ -217,59 +223,8 @@ export default function AdminDashboardPage() {
             </CardContent>
           </Card>
 
-          {/* System Status */}
-          <Card>
-            <CardHeader>
-              <CardTitle>System Status</CardTitle>
-              <CardDescription>
-                Current system health and performance
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-2">
-                  <Activity className="h-4 w-4 text-green-600" />
-                  <span className="text-sm">Mobile App API</span>
-                </div>
-                <Badge variant="default" className="bg-green-100 text-green-800">
-                  Online
-                </Badge>
-              </div>
-              
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-2">
-                  <Activity className="h-4 w-4 text-green-600" />
-                  <span className="text-sm">Database</span>
-                </div>
-                <Badge variant="default" className="bg-green-100 text-green-800">
-                  Online
-                </Badge>
-              </div>
-              
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-2">
-                  <Activity className="h-4 w-4 text-yellow-600" />
-                  <span className="text-sm">Payment Gateway</span>
-                </div>
-                <Badge variant="secondary" className="bg-yellow-100 text-yellow-800">
-                  Maintenance
-                </Badge>
-              </div>
-              
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-2">
-                  <Activity className="h-4 w-4 text-green-600" />
-                  <span className="text-sm">Notification Service</span>
-                </div>
-                <Badge variant="default" className="bg-green-100 text-green-800">
-                  Online
-                </Badge>
-              </div>
-            </CardContent>
-          </Card>
-
           {/* Recent Issues */}
-          <Card className="col-span-2">
+          <Card>
             <CardHeader>
               <CardTitle>Recent Issues & Support</CardTitle>
               <CardDescription>
@@ -319,33 +274,6 @@ export default function AdminDashboardPage() {
             </CardContent>
           </Card>
 
-          {/* Quick Actions */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Quick Actions</CardTitle>
-              <CardDescription>
-                Common administrative tasks
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="flex items-center space-x-3 p-2 hover:bg-muted rounded-lg cursor-pointer">
-                <CheckCircle className="h-4 w-4 text-blue-600" />
-                <span className="text-sm">Approve Meter Readings</span>
-              </div>
-              <div className="flex items-center space-x-3 p-2 hover:bg-muted rounded-lg cursor-pointer">
-                <Users className="h-4 w-4 text-green-600" />
-                <span className="text-sm">Verify New Users</span>
-              </div>
-              <div className="flex items-center space-x-3 p-2 hover:bg-muted rounded-lg cursor-pointer">
-                <DollarSign className="h-4 w-4 text-yellow-600" />
-                <span className="text-sm">Generate Bills</span>
-              </div>
-              <div className="flex items-center space-x-3 p-2 hover:bg-muted rounded-lg cursor-pointer">
-                <Calendar className="h-4 w-4 text-purple-600" />
-                <span className="text-sm">Schedule Maintenance</span>
-              </div>
-            </CardContent>
-          </Card>
         </div>
       </div>
     </AdminLayout>

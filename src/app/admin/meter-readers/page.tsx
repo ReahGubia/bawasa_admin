@@ -204,9 +204,9 @@ export default function MeterReaderManagementPage() {
                     <TableHead>Name</TableHead>
                     <TableHead>Email</TableHead>
                     <TableHead>Mobile Number</TableHead>
-                    <TableHead>Address</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Assigned Consumer</TableHead>
                     <TableHead>Created</TableHead>
-                    <TableHead>Last Signed In</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -228,18 +228,33 @@ export default function MeterReaderManagementPage() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <div className="text-sm max-w-xs truncate">
-                          {reader.full_address || 'No address provided'}
+                        <div className="text-sm">
+                          {reader.status ? (
+                            <Badge variant={reader.status === 'active' ? 'default' : 'secondary'}>
+                              {reader.status}
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline">No status</Badge>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="text-sm">
+                          {reader.assigned_consumer ? (
+                            <div className="space-y-1">
+                              <div className="font-medium">{reader.assigned_consumer.account?.full_name || 'Unknown Consumer'}</div>
+                              <div className="text-muted-foreground font-mono text-xs">
+                                Meter: {reader.assigned_consumer.water_meter_no}
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="text-muted-foreground">Not assigned</span>
+                          )}
                         </div>
                       </TableCell>
                       <TableCell>
                         <div className="text-sm">
                           {formatDate(reader.created_at)}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="text-sm">
-                          {formatLastLogin(reader.last_signed_in)}
                         </div>
                       </TableCell>
                       <TableCell className="text-right">

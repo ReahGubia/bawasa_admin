@@ -22,6 +22,20 @@ export interface Issue {
   status: string
 }
 
+export interface RevenueData {
+  month: string
+  revenue: number
+  billsCount: number
+}
+
+export interface RevenueStats {
+  totalRevenue: number
+  paidBills: number
+  pendingBills: number
+  overdueBills: number
+  monthlyRevenue: RevenueData[]
+}
+
 export class DashboardService {
   private static baseUrl = '/api/dashboard'
 
@@ -84,6 +98,27 @@ export class DashboardService {
       return { data: result.data }
     } catch (error) {
       console.error('Error fetching issues:', error)
+      return { error: error as Error }
+    }
+  }
+
+  static async getRevenueStats(): Promise<{ data?: RevenueStats; error?: Error }> {
+    try {
+      const response = await fetch(`${this.baseUrl}/revenue`)
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+      
+      const result = await response.json()
+      
+      if (result.error) {
+        throw new Error(result.error)
+      }
+      
+      return { data: result.data }
+    } catch (error) {
+      console.error('Error fetching revenue stats:', error)
       return { error: error as Error }
     }
   }

@@ -117,7 +117,6 @@ export default function ConsumerManagementPage() {
     
     const filtered = consumers.filter(consumer => 
       consumer.water_meter_no.toLowerCase().includes(query.toLowerCase()) ||
-      consumer.billing_month.toLowerCase().includes(query.toLowerCase()) ||
       consumer.account?.email?.toLowerCase().includes(query.toLowerCase()) ||
       consumer.account?.full_name?.toLowerCase().includes(query.toLowerCase()) ||
       consumer.account?.full_address?.toLowerCase().includes(query.toLowerCase())
@@ -265,15 +264,17 @@ export default function ConsumerManagementPage() {
                       </TableCell>
                       <TableCell>
                         <div className="text-sm">
-                          <div className="font-medium">{consumer.consumption_cubic_meters.toFixed(2)} cu.m</div>
+                          <div className="font-medium">
+                            {consumer.latest_meter_reading?.consumption_cubic_meters?.toFixed(2) || '0.00'} cu.m
+                          </div>
                           <div className="text-muted-foreground text-xs">
-                            {consumer.previous_reading} → {consumer.present_reading}
+                            {consumer.latest_meter_reading?.previous_reading || '0'} → {consumer.latest_meter_reading?.present_reading || '0'}
                           </div>
                         </div>
                       </TableCell>
                       <TableCell>
                         <div className="text-sm font-medium">
-                          ₱{consumer.total_amount_due.toFixed(2)}
+                          ₱{consumer.latest_billing?.total_amount_due?.toFixed(2) || '0.00'}
                         </div>
                       </TableCell>
                       <TableCell>{getStatusBadge(consumer.status)}</TableCell>
@@ -293,7 +294,7 @@ export default function ConsumerManagementPage() {
                             <DropdownMenuItem>Edit Billing</DropdownMenuItem>
                             <DropdownMenuItem>View Meter Readings</DropdownMenuItem>
                             <DropdownMenuSeparator />
-                            {consumer.payment_status === 'unpaid' ? (
+                            {consumer.latest_billing?.payment_status === 'unpaid' ? (
                               <DropdownMenuItem 
                                 onClick={() => handleStatusUpdate(consumer.id, 'paid')}
                                 className="text-green-600"

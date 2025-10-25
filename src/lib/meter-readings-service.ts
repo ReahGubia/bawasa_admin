@@ -3,10 +3,10 @@ import { supabase } from './supabase'
 export interface MeterReading {
   id: string
   consumer_id: string
-  water_meter_no: string
+  reading_date: string
+  previous_reading: number
   present_reading: number
-  meter_reading_date: string
-  payment_status: 'unpaid' | 'partial' | 'paid' | 'overdue'
+  consumption_cubic_meters: number
   created_at: string
   updated_at: string
 }
@@ -14,6 +14,9 @@ export interface MeterReading {
 export interface MeterReadingWithUser extends MeterReading {
   user_email: string
   user_name: string
+  water_meter_no: string
+  payment_status: 'unpaid' | 'partial' | 'paid' | 'overdue'
+  meter_reading_date: string // Alias for reading_date for compatibility
 }
 
 export interface LatestMeterReadingByUser extends MeterReadingWithUser {
@@ -26,14 +29,20 @@ export class MeterReadingsService {
    */
   static async getLatestMeterReadingsByUser(): Promise<LatestMeterReadingByUser[]> {
     try {
-      // Get all consumer records with account information
+      // Get meter readings with consumer and account information
       const { data, error } = await supabase
-        .from('bawasa_consumers')
+        .from('bawasa_meter_readings')
         .select(`
           *,
-          accounts!consumer_id (
-            email,
-            full_name
+          consumers!consumer_id (
+            water_meter_no,
+            accounts!consumer_id (
+              email,
+              full_name
+            )
+          ),
+          bawasa_billings!meter_reading_id (
+            payment_status
           )
         `)
         .order('created_at', { ascending: false })
@@ -47,11 +56,27 @@ export class MeterReadingsService {
       const consumerGroups = new Map<string, MeterReadingWithUser[]>()
       
       // Transform and group the data
-      const transformedData = (data || []).map(reading => ({
-        ...reading,
-        user_email: reading.accounts?.email || '',
-        user_name: reading.accounts?.full_name || 'Unknown User'
-      }))
+      const transformedData = (data || []).map(reading => {
+        const consumer = reading.consumers as any
+        const account = consumer?.accounts as any
+        const billing = reading.bawasa_billings as any
+        
+        return {
+          id: reading.id,
+          consumer_id: reading.consumer_id,
+          reading_date: reading.reading_date,
+          meter_reading_date: reading.reading_date, // Alias for compatibility
+          previous_reading: reading.previous_reading,
+          present_reading: reading.present_reading,
+          consumption_cubic_meters: reading.consumption_cubic_meters,
+          created_at: reading.created_at,
+          updated_at: reading.updated_at,
+          water_meter_no: consumer?.water_meter_no || '',
+          user_email: account?.email || '',
+          user_name: account?.full_name || 'Unknown User',
+          payment_status: billing?.[0]?.payment_status || 'unpaid'
+        }
+      })
 
       // Group readings by consumer_id
       transformedData.forEach(reading => {
@@ -87,12 +112,18 @@ export class MeterReadingsService {
   static async getAllMeterReadings(): Promise<MeterReadingWithUser[]> {
     try {
       const { data, error } = await supabase
-        .from('bawasa_consumers')
+        .from('bawasa_meter_readings')
         .select(`
           *,
-          accounts!consumer_id (
-            email,
-            full_name
+          consumers!consumer_id (
+            water_meter_no,
+            accounts!consumer_id (
+              email,
+              full_name
+            )
+          ),
+          bawasa_billings!meter_reading_id (
+            payment_status
           )
         `)
         .order('created_at', { ascending: false })
@@ -103,11 +134,27 @@ export class MeterReadingsService {
       }
 
       // Transform the data to match our interface
-      return (data || []).map(reading => ({
-        ...reading,
-        user_email: reading.accounts?.email || '',
-        user_name: reading.accounts?.full_name || 'Unknown User'
-      }))
+      return (data || []).map(reading => {
+        const consumer = reading.consumers as any
+        const account = consumer?.accounts as any
+        const billing = reading.bawasa_billings as any
+        
+        return {
+          id: reading.id,
+          consumer_id: reading.consumer_id,
+          reading_date: reading.reading_date,
+          meter_reading_date: reading.reading_date, // Alias for compatibility
+          previous_reading: reading.previous_reading,
+          present_reading: reading.present_reading,
+          consumption_cubic_meters: reading.consumption_cubic_meters,
+          created_at: reading.created_at,
+          updated_at: reading.updated_at,
+          water_meter_no: consumer?.water_meter_no || '',
+          user_email: account?.email || '',
+          user_name: account?.full_name || 'Unknown User',
+          payment_status: billing?.[0]?.payment_status || 'unpaid'
+        }
+      })
     } catch (error) {
       console.error('Error in getAllMeterReadings:', error)
       throw error
@@ -120,15 +167,21 @@ export class MeterReadingsService {
   static async getMeterReadingsByStatus(status: 'unpaid' | 'partial' | 'paid' | 'overdue'): Promise<MeterReadingWithUser[]> {
     try {
       const { data, error } = await supabase
-        .from('bawasa_consumers')
+        .from('bawasa_meter_readings')
         .select(`
           *,
-          accounts!consumer_id (
-            email,
-            full_name
+          consumers!consumer_id (
+            water_meter_no,
+            accounts!consumer_id (
+              email,
+              full_name
+            )
+          ),
+          bawasa_billings!meter_reading_id (
+            payment_status
           )
         `)
-        .eq('payment_status', status)
+        .eq('bawasa_billings.payment_status', status)
         .order('created_at', { ascending: false })
 
       if (error) {
@@ -137,11 +190,27 @@ export class MeterReadingsService {
       }
 
       // Transform the data to match our interface
-      return (data || []).map(reading => ({
-        ...reading,
-        user_email: reading.accounts?.email || '',
-        user_name: reading.accounts?.full_name || 'Unknown User'
-      }))
+      return (data || []).map(reading => {
+        const consumer = reading.consumers as any
+        const account = consumer?.accounts as any
+        const billing = reading.bawasa_billings as any
+        
+        return {
+          id: reading.id,
+          consumer_id: reading.consumer_id,
+          reading_date: reading.reading_date,
+          meter_reading_date: reading.reading_date, // Alias for compatibility
+          previous_reading: reading.previous_reading,
+          present_reading: reading.present_reading,
+          consumption_cubic_meters: reading.consumption_cubic_meters,
+          created_at: reading.created_at,
+          updated_at: reading.updated_at,
+          water_meter_no: consumer?.water_meter_no || '',
+          user_email: account?.email || '',
+          user_name: account?.full_name || 'Unknown User',
+          payment_status: billing?.[0]?.payment_status || 'unpaid'
+        }
+      })
     } catch (error) {
       console.error('Error in getMeterReadingsByStatus:', error)
       throw error
@@ -149,7 +218,7 @@ export class MeterReadingsService {
   }
 
   /**
-   * Update meter reading status
+   * Update meter reading status (updates the billing record)
    */
   static async updateMeterReadingStatus(
     readingId: string, 
@@ -162,10 +231,11 @@ export class MeterReadingsService {
         updated_at: new Date().toISOString()
       }
 
+      // Update the billing record associated with this meter reading
       const { error } = await supabase
-        .from('bawasa_consumers')
+        .from('bawasa_billings')
         .update(updateData)
-        .eq('id', readingId)
+        .eq('meter_reading_id', readingId)
 
       if (error) {
         console.error('Error updating meter reading status:', error)
@@ -189,7 +259,7 @@ export class MeterReadingsService {
   }> {
     try {
       const { data, error } = await supabase
-        .from('bawasa_consumers')
+        .from('bawasa_billings')
         .select('payment_status')
 
       if (error) {
@@ -218,15 +288,21 @@ export class MeterReadingsService {
   static async searchMeterReadings(query: string): Promise<MeterReadingWithUser[]> {
     try {
       const { data, error } = await supabase
-        .from('bawasa_consumers')
+        .from('bawasa_meter_readings')
         .select(`
           *,
-          accounts!consumer_id (
-            email,
-            full_name
+          consumers!consumer_id (
+            water_meter_no,
+            accounts!consumer_id (
+              email,
+              full_name
+            )
+          ),
+          bawasa_billings!meter_reading_id (
+            payment_status
           )
         `)
-        .or(`accounts.full_name.ilike.%${query}%,accounts.email.ilike.%${query}%`)
+        .or(`consumers.accounts.full_name.ilike.%${query}%,consumers.accounts.email.ilike.%${query}%`)
         .order('created_at', { ascending: false })
 
       if (error) {
@@ -235,11 +311,27 @@ export class MeterReadingsService {
       }
 
       // Transform the data to match our interface
-      return (data || []).map(reading => ({
-        ...reading,
-        user_email: reading.accounts?.email || '',
-        user_name: reading.accounts?.full_name || 'Unknown User'
-      }))
+      return (data || []).map(reading => {
+        const consumer = reading.consumers as any
+        const account = consumer?.accounts as any
+        const billing = reading.bawasa_billings as any
+        
+        return {
+          id: reading.id,
+          consumer_id: reading.consumer_id,
+          reading_date: reading.reading_date,
+          meter_reading_date: reading.reading_date, // Alias for compatibility
+          previous_reading: reading.previous_reading,
+          present_reading: reading.present_reading,
+          consumption_cubic_meters: reading.consumption_cubic_meters,
+          created_at: reading.created_at,
+          updated_at: reading.updated_at,
+          water_meter_no: consumer?.water_meter_no || '',
+          user_email: account?.email || '',
+          user_name: account?.full_name || 'Unknown User',
+          payment_status: billing?.[0]?.payment_status || 'unpaid'
+        }
+      })
     } catch (error) {
       console.error('Error in searchMeterReadings:', error)
       throw error
@@ -252,12 +344,19 @@ export class MeterReadingsService {
   static async getMeterReadingsByUserId(userId: string): Promise<MeterReadingWithUser[]> {
     try {
       const { data, error } = await supabase
-        .from('bawasa_consumers')
+        .from('bawasa_meter_readings')
         .select(`
           *,
-          accounts!consumer_id (
-            email,
-            full_name
+          consumers!consumer_id (
+            water_meter_no,
+            consumer_id,
+            accounts!consumer_id (
+              email,
+              full_name
+            )
+          ),
+          bawasa_billings!meter_reading_id (
+            payment_status
           )
         `)
         .eq('consumer_id', userId)
@@ -269,11 +368,27 @@ export class MeterReadingsService {
       }
 
       // Transform the data to match our interface
-      return (data || []).map(reading => ({
-        ...reading,
-        user_email: reading.accounts?.email || '',
-        user_name: reading.accounts?.full_name || 'Unknown User'
-      }))
+      return (data || []).map(reading => {
+        const consumer = reading.consumers as any
+        const account = consumer?.accounts as any
+        const billing = reading.bawasa_billings as any
+        
+        return {
+          id: reading.id,
+          consumer_id: reading.consumer_id,
+          reading_date: reading.reading_date,
+          meter_reading_date: reading.reading_date, // Alias for compatibility
+          previous_reading: reading.previous_reading,
+          present_reading: reading.present_reading,
+          consumption_cubic_meters: reading.consumption_cubic_meters,
+          created_at: reading.created_at,
+          updated_at: reading.updated_at,
+          water_meter_no: consumer?.water_meter_no || '',
+          user_email: account?.email || '',
+          user_name: account?.full_name || 'Unknown User',
+          payment_status: billing?.[0]?.payment_status || 'unpaid'
+        }
+      })
     } catch (error) {
       console.error('Error in getMeterReadingsByUserId:', error)
       throw error

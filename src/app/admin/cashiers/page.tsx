@@ -38,15 +38,17 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { UserService, UserWithStatus } from "@/lib/user-service"
+import { CashierService, CashierWithStatus } from "@/lib/cashier-service"
+import { AddCashierDialog } from "@/components/add-cashier-dialog"
 import { supabase } from "@/lib/supabase"
 import { useEffect, useState } from "react"
 
 export default function CashierManagementPage() {
-  const [cashiers, setCashiers] = useState<UserWithStatus[]>([])
+  const [cashiers, setCashiers] = useState<CashierWithStatus[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
-  const [filteredCashiers, setFilteredCashiers] = useState<UserWithStatus[]>([])
+  const [filteredCashiers, setFilteredCashiers] = useState<CashierWithStatus[]>([])
 
   // Fetch cashiers from Supabase
   const fetchCashiers = async () => {
@@ -55,9 +57,7 @@ export default function CashierManagementPage() {
       setLoading(true)
       setError(null)
       
-      // For now, we'll filter staff users as cashiers
-      // In a real implementation, you might have a specific role field
-      const { data, error } = await UserService.getUsersByAccountType('staff')
+      const { data, error } = await CashierService.getAllCashiers()
       
       console.log('📋 Fetch result:', { data, error })
       
@@ -68,11 +68,9 @@ export default function CashierManagementPage() {
       }
       
       if (data) {
-        console.log('📝 Formatting cashiers...')
-        const formattedCashiers = data.map(cashier => UserService.formatUserForDisplay(cashier))
-        console.log('✨ Formatted cashiers:', formattedCashiers)
-        setCashiers(formattedCashiers)
-        setFilteredCashiers(formattedCashiers)
+        console.log('✨ Formatted cashiers:', data)
+        setCashiers(data)
+        setFilteredCashiers(data)
       } else {
         console.log('📭 No data returned from Supabase')
         setCashiers([])
@@ -89,7 +87,7 @@ export default function CashierManagementPage() {
   // Handle cashier status update
   const handleStatusUpdate = async (cashierId: string, isActive: boolean) => {
     try {
-      const { error } = await UserService.updateUserStatus(cashierId, isActive)
+      const { error } = await CashierService.updateCashierStatus(cashierId, isActive)
       if (error) {
         setError(error.message || 'Failed to update cashier status')
         return
@@ -112,8 +110,9 @@ export default function CashierManagementPage() {
     
     const filtered = cashiers.filter(cashier => 
       cashier.full_name?.toLowerCase().includes(query.toLowerCase()) ||
-      cashier.email.toLowerCase().includes(query.toLowerCase()) ||
-      cashier.phone?.toLowerCase().includes(query.toLowerCase())
+      cashier.email?.toLowerCase().includes(query.toLowerCase()) ||
+      cashier.phone?.toLowerCase().includes(query.toLowerCase()) ||
+      cashier.employee_id?.toLowerCase().includes(query.toLowerCase())
     )
     setFilteredCashiers(filtered)
   }
@@ -174,10 +173,7 @@ export default function CashierManagementPage() {
               <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
               Refresh
             </Button>
-            <Button>
-              <UserPlus className="h-4 w-4 mr-2" />
-              Add New Cashier
-            </Button>
+            <AddCashierDialog onCashierAdded={fetchCashiers} />
           </div>
         </div>
 
@@ -235,10 +231,10 @@ export default function CashierManagementPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Cashier</TableHead>
+                    <TableHead>Employee ID</TableHead>
                     <TableHead>Contact</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead>Station</TableHead>
-                    <TableHead>Today's Transactions</TableHead>
+                    <TableHead>Hire Date</TableHead>
                     <TableHead>Last Active</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
@@ -253,8 +249,13 @@ export default function CashierManagementPage() {
                         </div>
                       </TableCell>
                       <TableCell>
+                        <div className="font-mono text-sm">
+                          {cashier.employee_id}
+                        </div>
+                      </TableCell>
+                      <TableCell>
                         <div className="space-y-1">
-                          <div className="text-sm">{cashier.email}</div>
+                          <div className="text-sm">{cashier.email || 'No email provided'}</div>
                           <div className="text-sm text-muted-foreground">
                             {cashier.phone || 'No phone provided'}
                           </div>
@@ -263,14 +264,7 @@ export default function CashierManagementPage() {
                       <TableCell>{getStatusBadge(cashier.status)}</TableCell>
                       <TableCell>
                         <div className="text-sm">
-                          <div className="font-medium">Station 1</div>
-                          <div className="text-muted-foreground">Main Office</div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center space-x-1">
-                          <TrendingUp className="h-3 w-3 text-green-600" />
-                          <span className="text-sm font-medium">47</span>
+                          {formatDate(cashier.hire_date)}
                         </div>
                       </TableCell>
                       <TableCell>{formatLastLogin(cashier.last_login_at)}</TableCell>

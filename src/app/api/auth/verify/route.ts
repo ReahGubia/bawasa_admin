@@ -56,9 +56,9 @@ export async function POST(request: NextRequest) {
 
       console.log('✅ [Auth API] Consumer password verified successfully')
 
-      // Get consumer data from bawasa_consumers table
+      // Get consumer data from consumers table
       const { data: consumer, error: consumerError } = await supabase
-        .from('bawasa_consumers')
+        .from('consumers')
         .select('*')
         .eq('consumer_id', account.id)
         .single()
@@ -80,7 +80,7 @@ export async function POST(request: NextRequest) {
         full_name: account.full_name,
         phone: account.mobile_no || '', // Use mobile_no field from accounts table
         full_address: account.full_address || '',
-        consumer_id: consumer.id, // Use the bawasa_consumers table ID
+        consumer_id: consumer.id, // Use the consumers table ID
         water_meter_no: consumer.water_meter_no,
         created_at: account.created_at,
         updated_at: account.updated_at,

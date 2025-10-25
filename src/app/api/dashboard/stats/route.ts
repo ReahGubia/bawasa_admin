@@ -23,22 +23,21 @@ export async function GET() {
         .from('accounts')
         .select('id', { count: 'exact', head: true }),
       
-      // Total meter readings count (from bawasa_consumers table)
+      // Total meter readings count (from bawasa_meter_readings table)
       supabase
-        .from('bawasa_consumers')
+        .from('bawasa_meter_readings')
         .select('id', { count: 'exact', head: true }),
       
-      // Pending bills count (from bawasa_consumers table with unpaid status)
+      // Pending bills count (from bawasa_billings table with unpaid status)
       supabase
-        .from('bawasa_consumers')
+        .from('bawasa_billings')
         .select('id', { count: 'exact', head: true })
         .in('payment_status', ['unpaid', 'partial', 'overdue']),
       
-      // Open issues count (assuming issues table exists)
+      // Open issues count (from issue_report table)
       supabase
-        .from('issues')
+        .from('issue_report')
         .select('id', { count: 'exact', head: true })
-        .in('status', ['open', 'in_progress'])
     ])
 
     // Check for errors

@@ -75,8 +75,8 @@ export function ViewConsumerDetailsDialog({
   }
 
   const isOverdue = () => {
-    if (consumer.payment_status === 'paid') return false
-    const dueDate = new Date(consumer.due_date)
+    if (consumer.latest_billing?.payment_status === 'paid') return false
+    const dueDate = new Date(consumer.latest_billing?.due_date || '')
     const today = new Date()
     return today > dueDate
   }
@@ -156,18 +156,18 @@ export function ViewConsumerDetailsDialog({
                   <label className="text-sm font-medium text-gray-500">Billing Month</label>
                   <div className="flex items-center space-x-2">
                     <Calendar className="h-4 w-4 text-gray-400" />
-                    <span className="text-sm">{consumer.billing_month}</span>
+                    <span className="text-sm">{consumer.latest_billing?.billing_month || 'Not available'}</span>
                   </div>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-gray-500">Previous Reading</label>
-                  <div className="text-sm font-medium">{consumer.previous_reading} cu.m</div>
+                  <div className="text-sm font-medium">{consumer.latest_meter_reading?.previous_reading?.toFixed(2) || '0.00'} cu.m</div>
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-gray-500">Present Reading</label>
-                  <div className="text-sm font-medium">{consumer.present_reading} cu.m</div>
+                  <div className="text-sm font-medium">{consumer.latest_meter_reading?.present_reading?.toFixed(2) || '0.00'} cu.m</div>
                 </div>
               </div>
               <div className="space-y-2">
@@ -175,7 +175,7 @@ export function ViewConsumerDetailsDialog({
                 <div className="flex items-center space-x-2">
                   <TrendingUp className="h-4 w-4 text-blue-500" />
                   <span className="text-lg font-semibold text-blue-600">
-                    {consumer.consumption_cubic_meters.toFixed(2)} cubic meters
+                    {consumer.latest_meter_reading?.consumption_cubic_meters?.toFixed(2) || '0.00'} cubic meters
                   </span>
                 </div>
               </div>
@@ -183,7 +183,7 @@ export function ViewConsumerDetailsDialog({
                 <label className="text-sm font-medium text-gray-500">Meter Reading Date</label>
                 <div className="flex items-center space-x-2">
                   <Calendar className="h-4 w-4 text-gray-400" />
-                  <span className="text-sm">{formatDate(consumer.meter_reading_date)}</span>
+                  <span className="text-sm">{consumer.latest_meter_reading?.reading_date ? formatDate(consumer.latest_meter_reading.reading_date) : 'Not available'}</span>
                 </div>
               </div>
             </CardContent>
@@ -204,14 +204,14 @@ export function ViewConsumerDetailsDialog({
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-gray-500">Payment Status</label>
-                  <div>{getStatusBadge(consumer.payment_status)}</div>
+                  <div>{getStatusBadge(consumer.latest_billing?.payment_status || 'unpaid')}</div>
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-gray-500">Due Date</label>
                   <div className="flex items-center space-x-2">
                     <Calendar className="h-4 w-4 text-gray-400" />
                     <span className={`text-sm ${isOverdue() ? 'text-red-600 font-semibold' : ''}`}>
-                      {formatDate(consumer.due_date)}
+                      {consumer.latest_billing?.due_date ? formatDate(consumer.latest_billing.due_date) : 'Not available'}
                     </span>
                     {isOverdue() && (
                       <Badge variant="destructive" className="text-xs">Overdue</Badge>
@@ -228,29 +228,29 @@ export function ViewConsumerDetailsDialog({
                   <div className="space-y-2">
                     <div className="flex justify-between">
                       <span>Consumption (10 cu.m or below):</span>
-                      <span>{consumer.consumption_10_or_below.toFixed(2)} cu.m</span>
+                      <span>{consumer.latest_billing?.consumption_10_or_below?.toFixed(2) || '0.00'} cu.m</span>
                     </div>
                     <div className="flex justify-between">
                       <span>Amount (10 cu.m or below):</span>
-                      <span>₱{consumer.amount_10_or_below.toFixed(2)}</span>
+                      <span>₱{consumer.latest_billing?.amount_10_or_below?.toFixed(2) || '0.00'}</span>
                     </div>
                     <div className="flex justify-between">
                       <span>Amount with discount (25%):</span>
-                      <span>₱{consumer.amount_10_or_below_with_discount.toFixed(2)}</span>
+                      <span>₱{consumer.latest_billing?.amount_10_or_below_with_discount?.toFixed(2) || '0.00'}</span>
                     </div>
                   </div>
                   <div className="space-y-2">
                     <div className="flex justify-between">
                       <span>Consumption (over 10 cu.m):</span>
-                      <span>{consumer.consumption_over_10.toFixed(2)} cu.m</span>
+                      <span>{consumer.latest_billing?.consumption_over_10?.toFixed(2) || '0.00'} cu.m</span>
                     </div>
                     <div className="flex justify-between">
                       <span>Amount (over 10 cu.m):</span>
-                      <span>₱{consumer.amount_over_10.toFixed(2)}</span>
+                      <span>₱{consumer.latest_billing?.amount_over_10?.toFixed(2) || '0.00'}</span>
                     </div>
                     <div className="flex justify-between">
                       <span>Arrears to be paid:</span>
-                      <span>₱{consumer.arrears_to_be_paid.toFixed(2)}</span>
+                      <span>₱{consumer.latest_billing?.arrears_to_be_paid?.toFixed(2) || '0.00'}</span>
                     </div>
                   </div>
                 </div>
@@ -260,11 +260,11 @@ export function ViewConsumerDetailsDialog({
                 <div className="space-y-2">
                   <div className="flex justify-between text-lg font-semibold">
                     <span>Current Billing:</span>
-                    <span>₱{consumer.amount_current_billing.toFixed(2)}</span>
+                    <span>₱{consumer.latest_billing?.amount_current_billing?.toFixed(2) || '0.00'}</span>
                   </div>
                   <div className="flex justify-between text-lg font-semibold text-green-600">
                     <span>Total Amount Due:</span>
-                    <span>₱{consumer.total_amount_due.toFixed(2)}</span>
+                    <span>₱{consumer.latest_billing?.total_amount_due?.toFixed(2) || '0.00'}</span>
                   </div>
                 </div>
               </div>
@@ -287,22 +287,22 @@ export function ViewConsumerDetailsDialog({
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-gray-500">Amount Paid</label>
                   <div className="text-lg font-semibold text-green-600">
-                    ₱{consumer.amount_paid.toFixed(2)}
+                    ₱{consumer.latest_billing?.amount_paid?.toFixed(2) || '0.00'}
                   </div>
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-gray-500">Payment Date</label>
                   <div className="flex items-center space-x-2">
                     <Calendar className="h-4 w-4 text-gray-400" />
-                    <span className="text-sm">{formatDateTime(consumer.payment_date)}</span>
+                    <span className="text-sm">{formatDateTime(consumer.latest_billing?.payment_date || null)}</span>
                   </div>
                 </div>
               </div>
-              {consumer.arrears_after_due_date && consumer.arrears_after_due_date > 0 && (
+              {consumer.latest_billing?.arrears_after_due_date && consumer.latest_billing.arrears_after_due_date > 0 && (
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-gray-500">Arrears After Due Date</label>
                   <div className="text-sm text-red-600 font-semibold">
-                    ₱{consumer.arrears_after_due_date.toFixed(2)}
+                    ₱{consumer.latest_billing.arrears_after_due_date.toFixed(2)}
                   </div>
                 </div>
               )}

@@ -62,12 +62,7 @@ const items = [
     title: "Issues & Reports",
     url: "/admin/issues",
     icon: AlertTriangle,
-  },
-  {
-    title: "Analytics & Reports",
-    url: "/admin/analytics",
-    icon: BarChart3,
-  },
+  }
 ]
 
 export function AdminSidebar() {

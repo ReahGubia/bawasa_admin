@@ -61,12 +61,14 @@ export function UserMeterReadingsDialog({
 
   const getStatusBadge = (status: string) => {
     switch (status) {
-      case "confirmed":
-        return <Badge variant="default" className="bg-green-100 text-green-800"><CheckCircle className="h-3 w-3 mr-1" />Confirmed</Badge>
-      case "pending":
-        return <Badge variant="secondary" className="bg-yellow-100 text-yellow-800"><Clock className="h-3 w-3 mr-1" />Pending</Badge>
-      case "rejected":
-        return <Badge variant="destructive"><XCircle className="h-3 w-3 mr-1" />Rejected</Badge>
+      case "paid":
+        return <Badge variant="default" className="bg-green-100 text-green-800"><CheckCircle className="h-3 w-3 mr-1" />Paid</Badge>
+      case "unpaid":
+        return <Badge variant="secondary" className="bg-yellow-100 text-yellow-800"><Clock className="h-3 w-3 mr-1" />Unpaid</Badge>
+      case "partial":
+        return <Badge variant="secondary" className="bg-blue-100 text-blue-800"><Clock className="h-3 w-3 mr-1" />Partial</Badge>
+      case "overdue":
+        return <Badge variant="destructive"><XCircle className="h-3 w-3 mr-1" />Overdue</Badge>
       default:
         return <Badge variant="outline">{status}</Badge>
     }
@@ -117,12 +119,13 @@ export function UserMeterReadingsDialog({
               <TableHeader>
                 <TableRow>
                   <TableHead>Reading ID</TableHead>
-                  <TableHead>Meter Type</TableHead>
-                  <TableHead>Value</TableHead>
+                  <TableHead>Water Meter No</TableHead>
+                  <TableHead>Previous Reading</TableHead>
+                  <TableHead>Present Reading</TableHead>
+                  <TableHead>Consumption</TableHead>
                   <TableHead>Reading Date</TableHead>
-                  <TableHead>Status</TableHead>
+                  <TableHead>Payment Status</TableHead>
                   <TableHead>Submitted</TableHead>
-                  <TableHead>Notes</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -130,15 +133,16 @@ export function UserMeterReadingsDialog({
                   <TableRow key={reading.id}>
                     <TableCell className="font-medium">{reading.id.slice(0, 8)}...</TableCell>
                     <TableCell>
-                      <Badge variant="outline">{reading.meter_type}</Badge>
+                      <Badge variant="outline">{reading.water_meter_no}</Badge>
                     </TableCell>
-                    <TableCell className="font-mono">{reading.reading_value.toLocaleString()}</TableCell>
+                    <TableCell className="font-mono">{reading.previous_reading?.toLocaleString() || '0'}</TableCell>
+                    <TableCell className="font-mono">{reading.present_reading?.toLocaleString() || '0'}</TableCell>
+                    <TableCell className="font-mono font-semibold text-blue-600">
+                      {reading.consumption_cubic_meters?.toLocaleString() || '0'} cu.m
+                    </TableCell>
                     <TableCell>{formatDate(reading.reading_date)}</TableCell>
-                    <TableCell>{getStatusBadge(reading.status)}</TableCell>
+                    <TableCell>{getStatusBadge(reading.payment_status)}</TableCell>
                     <TableCell>{formatDate(reading.created_at)}</TableCell>
-                    <TableCell className="max-w-xs truncate">
-                      {reading.notes || '-'}
-                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>

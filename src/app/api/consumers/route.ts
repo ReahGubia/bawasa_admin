@@ -39,11 +39,11 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    console.log('🚀 Creating water billing record...', { water_meter_no, full_name })
+    console.log('🚀 Creating consumer with new table structure...', { water_meter_no, full_name })
 
-    // Check if water meter number already exists
+    // Check if water meter number already exists in consumers table
     const { data: existingMeter, error: checkError } = await supabase
-      .from('bawasa_consumers')
+      .from('consumers')
       .select('water_meter_no')
       .eq('water_meter_no', water_meter_no)
       .single()
@@ -74,11 +74,11 @@ export async function POST(request: NextRequest) {
     // Step 2: Create account record in accounts table first
     const accountData = {
       email,
-      password: hashedPassword, // Now properly hashed
+      password: hashedPassword,
       full_name,
       full_address: address || null,
-      mobile_no: phone || null, // Add phone number to mobile_no column
-      user_type: 'consumer' // Set user type as consumer for admin-created accounts
+      mobile_no: phone || null,
+      user_type: 'consumer'
     }
 
     const { data: accountData_result, error: accountError } = await supabase
@@ -97,20 +97,65 @@ export async function POST(request: NextRequest) {
 
     console.log('✅ Account record created:', accountData_result.id)
 
-    // Step 3: Calculate consumption for billing calculations
+    // Step 3: Create consumer record in consumers table
+    const consumerData = {
+      water_meter_no,
+      consumer_id: accountData_result.id, // Foreign key to accounts table
+      registered_voter: registered_voter === 'yes' || registered_voter === true
+    }
+
+    const { data: consumerData_result, error: consumerError } = await supabase
+      .from('consumers')
+      .insert(consumerData)
+      .select()
+      .single()
+
+    if (consumerError) {
+      console.error('❌ Consumer record creation failed:', consumerError)
+      return NextResponse.json(
+        { error: `Account created but consumer record failed: ${consumerError.message}` },
+        { status: 500 }
+      )
+    }
+
+    console.log('✅ Consumer record created:', consumerData_result.id)
+
+    // Step 4: Create meter reading record in bawasa_meter_readings table
+    const meterReadingData = {
+      consumer_id: consumerData_result.id, // Foreign key to consumers table
+      reading_date: meter_reading_date || new Date().toISOString().split('T')[0],
+      previous_reading: parseFloat(previous_reading) || 0,
+      present_reading: parseFloat(present_reading) || 0
+      // consumption_cubic_meters is a generated column, will be calculated automatically
+    }
+
+    const { data: meterReadingData_result, error: meterReadingError } = await supabase
+      .from('bawasa_meter_readings')
+      .insert(meterReadingData)
+      .select()
+      .single()
+
+    if (meterReadingError) {
+      console.error('❌ Meter reading record creation failed:', meterReadingError)
+      return NextResponse.json(
+        { error: `Consumer created but meter reading record failed: ${meterReadingError.message}` },
+        { status: 500 }
+      )
+    }
+
+    console.log('✅ Meter reading record created:', meterReadingData_result.id)
+
+    // Step 5: Calculate consumption for billing calculations
     const consumption = parseFloat(consumption_cubic_meters) || 0
     
     // Use BAWASA billing calculator for accurate calculations
     const billingCalculation = BAWASABillingCalculator.calculateBilling(consumption)
     
-    // Step 4: Create water billing record with consumer_id foreign key
+    // Step 6: Create billing record in bawasa_billings table
     const billingData = {
-      water_meter_no,
+      consumer_id: consumerData_result.id, // Foreign key to consumers table
+      meter_reading_id: meterReadingData_result.id, // Foreign key to meter readings table
       billing_month: billing_month || new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
-      meter_reading_date: meter_reading_date || new Date().toISOString().split('T')[0],
-      previous_reading: parseFloat(previous_reading) || 0,
-      present_reading: parseFloat(present_reading) || 0,
-      // Note: consumption_cubic_meters is a generated column, don't include it
       
       // Billing calculations (matching BAWASA form structure)
       consumption_10_or_below: billingCalculation.consumption_10_or_below,
@@ -127,38 +172,39 @@ export async function POST(request: NextRequest) {
       arrears_after_due_date: 0,
       
       payment_status: payment_status || 'unpaid',
-      amount_paid: 0,
-      registered_voter: registered_voter === 'yes' || registered_voter === true,
-      consumer_id: accountData_result.id // Foreign key reference to accounts table
+      amount_paid: 0
+      // total_amount_due is a generated column, will be calculated automatically
     }
 
     const { data: billingData_result, error: billingError } = await supabase
-      .from('bawasa_consumers')
+      .from('bawasa_billings')
       .insert(billingData)
       .select()
       .single()
 
     if (billingError) {
-      console.error('❌ Water billing creation failed:', billingError)
+      console.error('❌ Billing record creation failed:', billingError)
       return NextResponse.json(
-        { error: `Account created but water billing record failed: ${billingError.message}` },
+        { error: `Consumer and meter reading created but billing record failed: ${billingError.message}` },
         { status: 500 }
       )
     }
 
-    console.log('✅ Water billing record created:', billingData_result.id)
+    console.log('✅ Billing record created:', billingData_result.id)
 
     return NextResponse.json({
       success: true,
-      message: 'Consumer and water billing record created successfully',
+      message: 'Consumer, meter reading, and billing records created successfully',
       data: {
+        consumer: consumerData_result,
+        meterReading: meterReadingData_result,
         billing: billingData_result,
         account: accountData_result
       }
     })
 
   } catch (error) {
-    console.error('💥 Unexpected error creating water billing record:', error)
+    console.error('💥 Unexpected error creating consumer records:', error)
     return NextResponse.json(
       { error: 'An unexpected error occurred' },
       { status: 500 }

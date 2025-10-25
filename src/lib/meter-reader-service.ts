@@ -12,7 +12,15 @@ export interface MeterReaderUser {
   user_type: string | null
   meter_reader_id: number // ID from bawasa_meter_reader table
   status: string | null // Status from bawasa_meter_reader table
-  assigned_to: string | null // UUID of assigned consumer from bawasa_consumers table
+  assigned_to: string | null // UUID of assigned consumer from consumers table
+  assigned_consumer?: {
+    id: string
+    water_meter_no: string
+    account?: {
+      full_name: string | null
+      email: string | null
+    }
+  } | null
 }
 
 export interface CreateMeterReaderData {
@@ -31,43 +39,95 @@ export class MeterReaderService {
     try {
       console.log('🔍 Fetching meter reader users from accounts and bawasa_meter_reader tables...')
       
-      const { data, error } = await supabase
+      // First, get all meter reader accounts
+      const { data: accounts, error: accountsError } = await supabase
         .from('accounts')
-        .select(`
-          *,
-          bawasa_meter_reader!reader_id (
-            id,
-            status,
-            created_at,
-            assigned_to
-          )
-        `)
+        .select('*')
         .eq('user_type', 'meter_reader')
         .order('created_at', { ascending: false })
 
-      console.log('📊 Supabase response:', { data, error })
-      
-      if (error) {
-        console.error('❌ Supabase error:', error)
-        return { data: null, error }
+      if (accountsError) {
+        console.error('❌ Error fetching accounts:', accountsError)
+        return { data: null, error: accountsError }
+      }
+
+      if (!accounts || accounts.length === 0) {
+        console.log('📭 No meter reader accounts found')
+        return { data: [], error: null }
+      }
+
+      // Then, get meter reader records for these accounts
+      const accountIds = accounts.map(acc => acc.id)
+      const { data: meterReaders, error: meterReadersError } = await supabase
+        .from('bawasa_meter_reader')
+        .select('*')
+        .in('reader_id', accountIds)
+
+      if (meterReadersError) {
+        console.error('❌ Error fetching meter readers:', meterReadersError)
+        return { data: null, error: meterReadersError }
+      }
+
+      // Get assigned consumers if any
+      const assignedConsumerIds = meterReaders
+        ?.filter(mr => mr.assigned_to)
+        .map(mr => mr.assigned_to) || []
+
+      let consumers: any[] = []
+      if (assignedConsumerIds.length > 0) {
+        const { data: consumersData, error: consumersError } = await supabase
+          .from('consumers')
+          .select(`
+            id,
+            water_meter_no,
+            consumer_id,
+            accounts!consumer_id (
+              full_name,
+              email
+            )
+          `)
+          .in('id', assignedConsumerIds)
+
+        if (consumersError) {
+          console.error('❌ Error fetching consumers:', consumersError)
+          // Don't return error, just continue without consumer data
+        } else {
+          consumers = consumersData || []
+        }
       }
 
       // Transform the data to match the interface
-      const transformedData = (data || []).map(account => ({
-        id: account.id,
-        created_at: account.created_at,
-        full_name: account.full_name,
-        email: account.email,
-        password: account.password,
-        mobile_no: account.mobile_no,
-        full_address: account.full_address,
-        last_signed_in: account.last_signed_in,
-        user_type: account.user_type,
-        meter_reader_id: account.bawasa_meter_reader?.id || null,
-        status: account.bawasa_meter_reader?.status || null,
-        assigned_to: account.bawasa_meter_reader?.assigned_to || null
-      }))
+      const transformedData = accounts.map(account => {
+        const meterReader = meterReaders?.find(mr => mr.reader_id === account.id)
+        const assignedConsumer = meterReader?.assigned_to 
+          ? consumers.find(c => c.id === meterReader.assigned_to)
+          : null
+        
+        return {
+          id: account.id,
+          created_at: account.created_at,
+          full_name: account.full_name,
+          email: account.email,
+          password: account.password,
+          mobile_no: account.mobile_no,
+          full_address: account.full_address,
+          last_signed_in: account.last_signed_in,
+          user_type: account.user_type,
+          meter_reader_id: meterReader?.id || null,
+          status: meterReader?.status || null,
+          assigned_to: meterReader?.assigned_to || null,
+          assigned_consumer: assignedConsumer ? {
+            id: assignedConsumer.id as string,
+            water_meter_no: assignedConsumer.water_meter_no as string,
+            account: assignedConsumer.accounts ? {
+              full_name: assignedConsumer.accounts.full_name as string | null,
+              email: assignedConsumer.accounts.email as string | null
+            } : undefined
+          } : null
+        }
+      })
 
+      console.log('✅ Successfully fetched meter readers:', transformedData.length)
       return { data: transformedData, error: null }
     } catch (error) {
       console.error('💥 Unexpected error fetching meter reader users:', error)
@@ -80,39 +140,76 @@ export class MeterReaderService {
    */
   static async getMeterReaderById(id: string): Promise<{ data: MeterReaderUser | null; error: any }> {
     try {
-      const { data, error } = await supabase
+      // Get the account
+      const { data: account, error: accountError } = await supabase
         .from('accounts')
-        .select(`
-          *,
-          bawasa_meter_reader!reader_id (
-            id,
-            status,
-            created_at,
-            assigned_to
-          )
-        `)
+        .select('*')
         .eq('id', id)
         .eq('user_type', 'meter_reader')
         .single()
 
-      if (error) {
-        return { data: null, error }
+      if (accountError) {
+        return { data: null, error: accountError }
+      }
+
+      // Get the meter reader record
+      const { data: meterReader, error: meterReaderError } = await supabase
+        .from('bawasa_meter_reader')
+        .select('*')
+        .eq('reader_id', id)
+        .single()
+
+      if (meterReaderError) {
+        console.error('Error fetching meter reader record:', meterReaderError)
+        // Continue without meter reader data
+      }
+
+      // Get assigned consumer if any
+      let assignedConsumer = null
+      if (meterReader?.assigned_to) {
+        const { data: consumerData, error: consumerError } = await supabase
+          .from('consumers')
+          .select(`
+            id,
+            water_meter_no,
+            consumer_id,
+            accounts!consumer_id (
+              full_name,
+              email
+            )
+          `)
+          .eq('id', meterReader.assigned_to)
+          .single()
+
+        if (consumerError) {
+          console.error('Error fetching assigned consumer:', consumerError)
+        } else {
+          assignedConsumer = consumerData
+        }
       }
 
       // Transform the data to match the interface
       const transformedData = {
-        id: data.id,
-        created_at: data.created_at,
-        full_name: data.full_name,
-        email: data.email,
-        password: data.password,
-        mobile_no: data.mobile_no,
-        full_address: data.full_address,
-        last_signed_in: data.last_signed_in,
-        user_type: data.user_type,
-        meter_reader_id: data.bawasa_meter_reader?.id || null,
-        status: data.bawasa_meter_reader?.status || null,
-        assigned_to: data.bawasa_meter_reader?.assigned_to || null
+        id: account.id,
+        created_at: account.created_at,
+        full_name: account.full_name,
+        email: account.email,
+        password: account.password,
+        mobile_no: account.mobile_no,
+        full_address: account.full_address,
+        last_signed_in: account.last_signed_in,
+        user_type: account.user_type,
+        meter_reader_id: meterReader?.id || null,
+        status: meterReader?.status || null,
+        assigned_to: meterReader?.assigned_to || null,
+        assigned_consumer: assignedConsumer ? {
+          id: assignedConsumer.id as string,
+          water_meter_no: assignedConsumer.water_meter_no as string,
+          account: assignedConsumer.accounts ? {
+            full_name: (assignedConsumer.accounts as any).full_name as string | null,
+            email: (assignedConsumer.accounts as any).email as string | null
+          } : undefined
+        } : null
       }
 
       return { data: transformedData, error: null }
@@ -264,40 +361,91 @@ export class MeterReaderService {
    */
   static async searchMeterReaders(query: string): Promise<{ data: MeterReaderUser[] | null; error: any }> {
     try {
-      const { data, error } = await supabase
+      // Search accounts first
+      const { data: accounts, error: accountsError } = await supabase
         .from('accounts')
-        .select(`
-          *,
-          bawasa_meter_reader!reader_id (
-            id,
-            status,
-            created_at,
-            assigned_to
-          )
-        `)
+        .select('*')
         .eq('user_type', 'meter_reader')
         .or(`full_name.ilike.%${query}%,email.ilike.%${query}%`)
         .order('created_at', { ascending: false })
 
-      if (error) {
-        return { data: null, error }
+      if (accountsError) {
+        return { data: null, error: accountsError }
+      }
+
+      if (!accounts || accounts.length === 0) {
+        return { data: [], error: null }
+      }
+
+      // Get meter reader records for these accounts
+      const accountIds = accounts.map(acc => acc.id)
+      const { data: meterReaders, error: meterReadersError } = await supabase
+        .from('bawasa_meter_reader')
+        .select('*')
+        .in('reader_id', accountIds)
+
+      if (meterReadersError) {
+        console.error('Error fetching meter readers:', meterReadersError)
+        // Continue without meter reader data
+      }
+
+      // Get assigned consumers if any
+      const assignedConsumerIds = meterReaders
+        ?.filter(mr => mr.assigned_to)
+        .map(mr => mr.assigned_to) || []
+
+      let consumers: any[] = []
+      if (assignedConsumerIds.length > 0) {
+        const { data: consumersData, error: consumersError } = await supabase
+          .from('consumers')
+          .select(`
+            id,
+            water_meter_no,
+            consumer_id,
+            accounts!consumer_id (
+              full_name,
+              email
+            )
+          `)
+          .in('id', assignedConsumerIds)
+
+        if (consumersError) {
+          console.error('Error fetching consumers:', consumersError)
+        } else {
+          consumers = consumersData || []
+        }
       }
 
       // Transform the data to match the interface
-      const transformedData = (data || []).map(account => ({
-        id: account.id,
-        created_at: account.created_at,
-        full_name: account.full_name,
-        email: account.email,
-        password: account.password,
-        mobile_no: account.mobile_no,
-        full_address: account.full_address,
-        last_signed_in: account.last_signed_in,
-        user_type: account.user_type,
-        meter_reader_id: account.bawasa_meter_reader?.id || null,
-        status: account.bawasa_meter_reader?.status || null,
-        assigned_to: account.bawasa_meter_reader?.assigned_to || null
-      }))
+      const transformedData = accounts.map(account => {
+        const meterReader = meterReaders?.find(mr => mr.reader_id === account.id)
+        const assignedConsumer = meterReader?.assigned_to 
+          ? consumers.find(c => c.id === meterReader.assigned_to)
+          : null
+        
+        return {
+          id: account.id,
+          created_at: account.created_at,
+          full_name: account.full_name,
+          email: account.email,
+          password: account.password,
+          mobile_no: account.mobile_no,
+          full_address: account.full_address,
+          last_signed_in: account.last_signed_in,
+          user_type: account.user_type,
+          meter_reader_id: meterReader?.id || null,
+          status: meterReader?.status || null,
+          assigned_to: meterReader?.assigned_to || null,
+          assigned_consumer: assignedConsumer ? {
+            id: assignedConsumer.id as string,
+            water_meter_no: assignedConsumer.water_meter_no as string,
+            account: assignedConsumer.accounts ? {
+              full_name: assignedConsumer.accounts.full_name as string | null,
+              email: assignedConsumer.accounts.email as string | null
+            } : undefined
+          } : null
+        }
+      })
 
       return { data: transformedData, error: null }
     } catch (error) {
