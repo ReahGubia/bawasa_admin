@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/select"
 import { UserPlus, Loader2, Home, DollarSign, Droplets, RefreshCw, Eye, EyeOff } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { toast } from "sonner"
 
 interface AddConsumerDialogProps {
   onConsumerAdded?: () => void
@@ -330,6 +331,12 @@ export function AddConsumerDialog({ onConsumerAdded }: AddConsumerDialogProps) {
       }
 
       console.log('✅ Consumer created successfully:', result)
+      
+      // Show success message with email notification
+      toast.success("Consumer created successfully!", {
+        description: `A water bill has been sent to ${formData.email}. Please check the consumer's email for bill details.`,
+        duration: 5000,
+      })
       
       // Reset form
       setFormData({

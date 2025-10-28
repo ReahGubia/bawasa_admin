@@ -52,6 +52,7 @@ export default function MeterReadingsPage() {
     name: string
     email: string
   } | null>(null)
+  const [isCreatingReadings, setIsCreatingReadings] = useState(false)
 
   // Load meter readings on component mount
   useEffect(() => {
@@ -195,6 +196,59 @@ export default function MeterReadingsPage() {
     }
   }
 
+  const handleCreateNewMonthReadings = async () => {
+    try {
+      setIsCreatingReadings(true)
+      setError(null)
+
+      // Get current month and year
+      const now = new Date()
+      const currentMonth = now.toLocaleString('en-US', { month: 'long' })
+      const currentYear = now.getFullYear()
+
+      // Check if readings already exist for this month
+      const { data: existingReadings } = await supabase
+        .from('bawasa_meter_readings')
+        .select('id')
+        .gte('reading_date', new Date(currentYear, now.getMonth(), 1).toISOString().split('T')[0])
+        .lt('reading_date', new Date(currentYear, now.getMonth() + 1, 1).toISOString().split('T')[0])
+
+      if (existingReadings && existingReadings.length > 0) {
+        alert(`Meter readings already exist for ${currentMonth} ${currentYear}. Please wait until next month to create new readings.`)
+        return
+      }
+
+      // Call the API to create meter readings for the new month
+      const response = await fetch('/api/billing/create-monthly-readings', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          month: currentMonth,
+          year: currentYear
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to create meter readings')
+      }
+
+      // Reload meter readings after successful creation
+      await loadMeterReadings()
+      
+      alert(`Successfully created ${data.count} meter reading records for ${currentMonth} ${currentYear}`)
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to create meter readings'
+      setError(errorMessage)
+      alert(`Error: ${errorMessage}`)
+    } finally {
+      setIsCreatingReadings(false)
+    }
+  }
+
   return (
     <AdminLayout>
       <div className="space-y-6">
@@ -206,10 +260,29 @@ export default function MeterReadingsPage() {
               Review latest meter readings by user - click on user to view complete history
             </p>
           </div>
-          <Button>
-            <TrendingUp className="h-4 w-4 mr-2" />
-            View Analytics
-          </Button>
+          <div className="flex items-center space-x-2">
+            <Button 
+              onClick={handleCreateNewMonthReadings}
+              disabled={isCreatingReadings}
+              variant="default"
+            >
+              {isCreatingReadings ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Creating...
+                </>
+              ) : (
+                <>
+                  <Droplets className="h-4 w-4 mr-2" />
+                  Create Next Month Readings
+                </>
+              )}
+            </Button>
+            <Button>
+              <TrendingUp className="h-4 w-4 mr-2" />
+              View Analytics
+            </Button>
+          </div>
         </div>
 
         {/* Meter Readings Table */}
@@ -285,6 +358,7 @@ export default function MeterReadingsPage() {
                     <TableHead>User</TableHead>
                     <TableHead>Total Readings</TableHead>
                     <TableHead>Water Meter No</TableHead>
+                    <TableHead>Billing Month</TableHead>
                     <TableHead>Present Reading</TableHead>
                     <TableHead>Reading Date</TableHead>
                     <TableHead>Status</TableHead>
@@ -295,7 +369,7 @@ export default function MeterReadingsPage() {
                 <TableBody>
                   {filteredReadings.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
+                      <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
                         No meter readings found
                       </TableCell>
                     </TableRow>
@@ -320,6 +394,11 @@ export default function MeterReadingsPage() {
                         </TableCell>
                         <TableCell>
                           <Badge variant="outline">{reading.water_meter_no}</Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="secondary">
+                            {reading.billing_month || 'N/A'}
+                          </Badge>
                         </TableCell>
                         <TableCell className="font-mono">{reading.present_reading?.toLocaleString() || '0'}</TableCell>
                         <TableCell>{new Date(reading.meter_reading_date).toLocaleDateString()}</TableCell>
@@ -370,75 +449,7 @@ export default function MeterReadingsPage() {
           </CardContent>
         </Card>
 
-        {/* Reading Analytics */}
-        <div className="grid gap-6 md:grid-cols-2">
-          <Card>
-            <CardHeader>
-              <CardTitle>Reading Trends</CardTitle>
-              <CardDescription>
-                Monthly meter reading submission trends
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm">January 2024</span>
-                  <div className="flex items-center space-x-2">
-                    <div className="w-32 bg-gray-200 rounded-full h-2">
-                      <div className="bg-blue-600 h-2 rounded-full" style={{ width: '85%' }}></div>
-                    </div>
-                    <span className="text-sm font-medium">8,421</span>
-                  </div>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm">December 2023</span>
-                  <div className="flex items-center space-x-2">
-                    <div className="w-32 bg-gray-200 rounded-full h-2">
-                      <div className="bg-blue-600 h-2 rounded-full" style={{ width: '78%' }}></div>
-                    </div>
-                    <span className="text-sm font-medium">7,789</span>
-                  </div>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm">November 2023</span>
-                  <div className="flex items-center space-x-2">
-                    <div className="w-32 bg-gray-200 rounded-full h-2">
-                      <div className="bg-blue-600 h-2 rounded-full" style={{ width: '72%' }}></div>
-                    </div>
-                    <span className="text-sm font-medium">7,234</span>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Quick Actions</CardTitle>
-              <CardDescription>
-                Common meter reading management tasks
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <Button className="w-full justify-start" variant="outline">
-                <CheckCircle className="h-4 w-4 mr-2" />
-                Bulk Approve Readings
-              </Button>
-              <Button className="w-full justify-start" variant="outline">
-                <TrendingUp className="h-4 w-4 mr-2" />
-                Generate Usage Report
-              </Button>
-              <Button className="w-full justify-start" variant="outline">
-                <Droplets className="h-4 w-4 mr-2" />
-                Export Reading Data
-              </Button>
-              <Button className="w-full justify-start" variant="outline">
-                <Clock className="h-4 w-4 mr-2" />
-                Set Reading Schedule
-              </Button>
-            </CardContent>
-          </Card>
-        </div>
+        
       </div>
       
       {/* User Meter Readings Dialog */}

@@ -9,6 +9,9 @@ export interface IssueReport {
   issue_images: any | null
   created_at: string
   consumer_id: string | null
+  status?: string | null
+  scheduled_fix_date?: string | null
+  assigned_technician?: string | null
 }
 
 export interface IssueReportWithUser extends IssueReport {
@@ -28,7 +31,17 @@ export class IssueService {
       const { data: issues, error } = await supabase
         .from('issue_report')
         .select(`
-          *,
+          id,
+          issue_type,
+          priority,
+          issue_title,
+          description,
+          issue_images,
+          created_at,
+          consumer_id,
+          status,
+          scheduled_fix_date,
+          assigned_technician,
           consumers!consumer_id (
             accounts!consumer_id (
               full_name,
@@ -71,7 +84,17 @@ export class IssueService {
       const { data, error } = await supabase
         .from('issue_report')
         .select(`
-          *,
+          id,
+          issue_type,
+          priority,
+          issue_title,
+          description,
+          issue_images,
+          created_at,
+          consumer_id,
+          status,
+          scheduled_fix_date,
+          assigned_technician,
           consumers!consumer_id (
             accounts!consumer_id (
               full_name,
@@ -112,7 +135,17 @@ export class IssueService {
       const { data: issues, error } = await supabase
         .from('issue_report')
         .select(`
-          *,
+          id,
+          issue_type,
+          priority,
+          issue_title,
+          description,
+          issue_images,
+          created_at,
+          consumer_id,
+          status,
+          scheduled_fix_date,
+          assigned_technician,
           consumers!consumer_id (
             accounts!consumer_id (
               full_name,
@@ -121,7 +154,7 @@ export class IssueService {
             )
           )
         `)
-        .or(`issue_title.ilike.%${query}%,description.ilike.%${query}%,consumers.accounts.full_name.ilike.%${query}%`)
+        .or(`issue_title.ilike.%${query}%,description.ilike.%${query}%`)
         .order('created_at', { ascending: false })
 
       if (error) {
@@ -155,7 +188,17 @@ export class IssueService {
       const { data: issues, error } = await supabase
         .from('issue_report')
         .select(`
-          *,
+          id,
+          issue_type,
+          priority,
+          issue_title,
+          description,
+          issue_images,
+          created_at,
+          consumer_id,
+          status,
+          scheduled_fix_date,
+          assigned_technician,
           consumers!consumer_id (
             accounts!consumer_id (
               full_name,
@@ -228,6 +271,113 @@ export class IssueService {
     } catch (error) {
       console.error('Error fetching issue stats:', error)
       return { total: 0, high: 0, medium: 0, low: 0, byType: {} }
+    }
+  }
+
+  /**
+   * Update issue status
+   */
+  static async updateIssueStatus(
+    issueId: number,
+    status: string
+  ): Promise<{ data: any; error: any }> {
+    try {
+      console.log(`🔄 Updating issue #${issueId} status to: ${status}...`)
+      
+      const updateData: any = { status }
+
+      // Update the issue
+      const { error: updateError } = await supabase
+        .from('issue_report')
+        .update(updateData)
+        .eq('id', issueId)
+
+      if (updateError) {
+        console.error('❌ Error updating issue status:', updateError)
+        return { data: null, error: updateError }
+      }
+
+      console.log('✅ Issue status updated successfully')
+      return { data: { success: true }, error: null }
+    } catch (error) {
+      console.error('💥 Unexpected error updating issue status:', error)
+      return { data: null, error }
+    }
+  }
+
+  /**
+   * Update issue scheduling information
+   */
+  static async scheduleIssue(
+    issueId: number,
+    scheduledDate: string,
+    technician?: string,
+    notes?: string
+  ): Promise<{ data: any; error: any }> {
+    try {
+      console.log(`📅 Scheduling issue #${issueId}...`)
+      
+      // Prepare the schedule note to append to description
+      const scheduleNote = `\n\n---\nSCHEDULED FIX:\nDate: ${new Date(scheduledDate).toLocaleDateString('en-US', { dateStyle: 'full' })}\nTime: ${new Date(scheduledDate).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}\nTechnician: ${technician || 'Not assigned'}${notes ? `\nNotes: ${notes}` : ''}`
+
+      // Get current issue to append schedule note
+      const { data: currentIssue, error: fetchError } = await supabase
+        .from('issue_report')
+        .select('description, scheduled_fix_date, assigned_technician, status')
+        .eq('id', issueId)
+        .single()
+
+      if (fetchError) {
+        console.error('❌ Error fetching issue:', fetchError)
+        return { data: null, error: fetchError }
+      }
+
+      const updateData: any = {}
+
+      // Try to update the status column if it exists
+      try {
+        updateData.status = 'assigned'
+      } catch (e) {
+        console.log('Note: status column may not exist in the table')
+      }
+
+      // Try to update the scheduled_fix_date column if it exists
+      try {
+        updateData.scheduled_fix_date = scheduledDate
+      } catch (e) {
+        console.log('Note: scheduled_fix_date column may not exist in the table')
+      }
+
+      // Try to update the assigned_technician column if it exists
+      if (technician) {
+        try {
+          updateData.assigned_technician = technician
+        } catch (e) {
+          console.log('Note: assigned_technician column may not exist in the table')
+        }
+      }
+
+      // Append schedule information to description
+      updateData.description = currentIssue?.description 
+        ? `${currentIssue.description}${scheduleNote}`
+        : scheduleNote.trim()
+
+      // Update the issue
+      const { error: updateError } = await supabase
+        .from('issue_report')
+        .update(updateData)
+        .eq('id', issueId)
+
+      if (updateError) {
+        console.error('❌ Error updating issue:', updateError)
+        return { data: null, error: updateError }
+      }
+
+      console.log('✅ Issue scheduled successfully')
+      return { data: { success: true }, error: null }
+    } catch (error) {
+      console.error('💥 Unexpected error scheduling issue:', error)
+      return { data: null, error }
     }
   }
 }

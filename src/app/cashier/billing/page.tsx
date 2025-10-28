@@ -35,6 +35,11 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { CashierLayout } from "@/components/cashier-sidebar"
 import { BillingService, BillingWithDetails } from "@/lib/billing-service"
+import { ViewBillingDetailsDialog } from "@/components/view-billing-details-dialog"
+import { PrintableBill } from "@/components/printable-bill"
+import { Printer } from "lucide-react"
+import { PaymentTransactionsService } from "@/lib/payment-transactions-service"
+import { CashierAuthService } from "@/lib/cashier-auth-service"
 
 export default function CashierBillingPage() {
   const [billings, setBillings] = useState<BillingWithDetails[]>([])
@@ -43,10 +48,26 @@ export default function CashierBillingPage() {
   const [error, setError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState<string>("all")
+  const [selectedBilling, setSelectedBilling] = useState<BillingWithDetails | null>(null)
+  const [isDetailsDialogOpen, setIsDetailsDialogOpen] = useState(false)
+  const [billingToPrint, setBillingToPrint] = useState<BillingWithDetails | null>(null)
+  const [cashierId, setCashierId] = useState<string | null>(null)
 
   useEffect(() => {
     fetchBillings()
+    fetchCashierId()
   }, [])
+
+  const fetchCashierId = async () => {
+    try {
+      const response = await CashierAuthService.getCurrentCashier()
+      if (response.success && response.cashier) {
+        setCashierId(response.cashier.id)
+      }
+    } catch (err) {
+      console.error('Error fetching cashier ID:', err)
+    }
+  }
 
   useEffect(() => {
     handleSearch(searchQuery)
@@ -96,14 +117,39 @@ export default function CashierBillingPage() {
     setFilteredBillings(filtered)
   }
 
-  const handleStatusUpdate = async (billingId: string, newStatus: string) => {
+  const handleStatusUpdate = async (billingId: string, newStatus: 'unpaid' | 'partial' | 'paid' | 'overdue') => {
     try {
-      const { error } = await BillingService.updateBillingStatus(billingId, newStatus)
+      // If marking as paid, get the billing data first to get the total amount
+      let totalAmount = 0
+      if (newStatus === 'paid') {
+        const billing = billings.find(b => b.id === billingId)
+        if (billing) {
+          totalAmount = billing.total_amount_due
+        }
+      }
+
+      const { data: billingData, error } = await BillingService.updateBillingStatus(billingId, newStatus)
 
       if (error) {
         console.error('Error updating billing status:', error)
         setError('Failed to update billing status')
         return
+      }
+
+      // If marking as paid and we have a cashier ID, create a payment transaction
+      if (newStatus === 'paid' && cashierId && totalAmount > 0) {
+        const { error: transactionError } = await PaymentTransactionsService.createPaymentTransaction({
+          billing_id: billingId,
+          cashier_id: cashierId,
+          amount_paid: totalAmount
+        })
+
+        if (transactionError) {
+          console.error('Error creating payment transaction:', transactionError)
+          // Don't show error to user as the payment was still processed
+        } else {
+          console.log('Payment transaction recorded successfully')
+        }
       }
 
       // Refresh the billings list
@@ -113,6 +159,32 @@ export default function CashierBillingPage() {
       setError('Failed to update billing status')
     }
   }
+
+  const handleViewDetails = (billing: BillingWithDetails) => {
+    setSelectedBilling(billing)
+    setIsDetailsDialogOpen(true)
+  }
+
+  const handlePrintBill = (billing: BillingWithDetails) => {
+    setBillingToPrint(billing)
+    // Trigger print after a short delay to ensure state update
+    setTimeout(() => {
+      window.print()
+    }, 100)
+  }
+
+  // Handle print cleanup
+  useEffect(() => {
+    const handleAfterPrint = () => {
+      setBillingToPrint(null)
+    }
+    
+    window.addEventListener('afterprint', handleAfterPrint)
+    
+    return () => {
+      window.removeEventListener('afterprint', handleAfterPrint)
+    }
+  }, [])
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-PH', {
@@ -287,8 +359,13 @@ export default function CashierBillingPage() {
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
                               <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                              <DropdownMenuItem>View Details</DropdownMenuItem>
-                              <DropdownMenuItem>Print Bill</DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleViewDetails(billing)}>
+                                View Details
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handlePrintBill(billing)}>
+                                <Printer className="h-4 w-4 mr-2" />
+                                Print Bill
+                              </DropdownMenuItem>
                               <DropdownMenuSeparator />
                               {billing.payment_status === 'unpaid' ? (
                                 <DropdownMenuItem
@@ -318,6 +395,47 @@ export default function CashierBillingPage() {
             )}
           </CardContent>
         </Card>
+
+        {/* Billing Details Dialog */}
+        <ViewBillingDetailsDialog
+          billing={selectedBilling}
+          open={isDetailsDialogOpen}
+          onOpenChange={setIsDetailsDialogOpen}
+        />
+
+        {/* Printable Bill - Hidden until print */}
+        {billingToPrint && (
+          <div className="hidden-print">
+            <PrintableBill billing={billingToPrint} />
+          </div>
+        )}
+
+        {/* Print styles */}
+        <style dangerouslySetInnerHTML={{ __html: `
+          @media print {
+            body * {
+              visibility: hidden;
+            }
+            .print-container,
+            .print-container * {
+              visibility: visible;
+            }
+            .print-container {
+              position: absolute;
+              left: 0;
+              top: 0;
+              width: 100%;
+              padding: 20px;
+            }
+          }
+          @media screen {
+            .hidden-print {
+              position: absolute;
+              left: -9999px;
+              top: -9999px;
+            }
+          }
+        `}} />
       </div>
     </CashierLayout>
   )

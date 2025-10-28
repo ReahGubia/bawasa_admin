@@ -70,6 +70,7 @@ export class BillingService {
       console.log('🔍 Fetching billings from new table structure...')
       
       // Fetch billings with consumer and account information
+      // Only fetch billings where reading_assigned is true
       const { data: billings, error: billingsError } = await supabase
         .from('bawasa_billings')
         .select(`
@@ -84,6 +85,7 @@ export class BillingService {
             *
           )
         `)
+        .eq('reading_assigned', true)
         .order('created_at', { ascending: false })
 
       if (billingsError) {
@@ -140,6 +142,7 @@ export class BillingService {
             *
           )
         `)
+        .eq('reading_assigned', true)
         .eq('payment_status', status)
         .order('created_at', { ascending: false })
 
@@ -192,6 +195,7 @@ export class BillingService {
             *
           )
         `)
+        .eq('reading_assigned', true)
         .ilike('consumers.water_meter_no', `%${query}%`)
         .order('created_at', { ascending: false })
 
@@ -210,6 +214,7 @@ export class BillingService {
             *
           )
         `)
+        .eq('reading_assigned', true)
         .or(`consumers.accounts.email.ilike.%${query}%,consumers.accounts.full_name.ilike.%${query}%`)
         .order('created_at', { ascending: false })
 
@@ -253,12 +258,29 @@ export class BillingService {
    */
   static async updateBillingStatus(id: string, status: 'unpaid' | 'partial' | 'paid' | 'overdue'): Promise<{ data: Billing | null; error: any }> {
     try {
+      const updateData: any = {
+        payment_status: status,
+        updated_at: new Date().toISOString()
+      }
+
+      // If marking as paid, update payment_date and amount_paid
+      if (status === 'paid') {
+        updateData.payment_date = new Date().toISOString()
+        // Get the current billing to get total_amount_due
+        const { data: currentBilling } = await supabase
+          .from('bawasa_billings')
+          .select('total_amount_due')
+          .eq('id', id)
+          .single()
+        
+        if (currentBilling) {
+          updateData.amount_paid = currentBilling.total_amount_due
+        }
+      }
+
       const { data, error } = await supabase
         .from('bawasa_billings')
-        .update({ 
-          payment_status: status,
-          updated_at: new Date().toISOString()
-        })
+        .update(updateData)
         .eq('id', id)
         .select()
         .single()

@@ -231,8 +231,6 @@ export default function ConsumerManagementPage() {
                     <TableHead>Consumer</TableHead>
                     <TableHead>Water Meter</TableHead>
                     <TableHead>Contact</TableHead>
-                    <TableHead>Consumption</TableHead>
-                    <TableHead>Amount Due</TableHead>
                     <TableHead>Payment Status</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
@@ -260,21 +258,6 @@ export default function ConsumerManagementPage() {
                           <div className="text-sm text-muted-foreground">
                             {consumer.account?.full_address || 'No address provided'}
                           </div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="text-sm">
-                          <div className="font-medium">
-                            {consumer.latest_meter_reading?.consumption_cubic_meters?.toFixed(2) || '0.00'} cu.m
-                          </div>
-                          <div className="text-muted-foreground text-xs">
-                            {consumer.latest_meter_reading?.previous_reading || '0'} → {consumer.latest_meter_reading?.present_reading || '0'}
-                          </div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="text-sm font-medium">
-                          ₱{consumer.latest_billing?.total_amount_due?.toFixed(2) || '0.00'}
                         </div>
                       </TableCell>
                       <TableCell>{getStatusBadge(consumer.status)}</TableCell>

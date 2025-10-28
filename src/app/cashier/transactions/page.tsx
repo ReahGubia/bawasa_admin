@@ -47,11 +47,11 @@ interface TransactionRecord {
   amount_paid: number
   payment_date: string
   payment_status: string
-  consumer: {
-    water_meter_no: string
-    accounts: {
-      full_name: string
-      email: string
+  consumer?: {
+    water_meter_no?: string
+    accounts?: {
+      full_name?: string
+      email?: string
     }
   }
 }
@@ -116,9 +116,9 @@ export default function CashierTransactionsPage() {
     // Filter by search query
     if (query.trim()) {
       filtered = filtered.filter(transaction => 
-        transaction.consumer.accounts.full_name?.toLowerCase().includes(query.toLowerCase()) ||
-        transaction.consumer.water_meter_no?.toLowerCase().includes(query.toLowerCase()) ||
-        transaction.consumer.accounts.email?.toLowerCase().includes(query.toLowerCase())
+        transaction.consumer?.accounts?.full_name?.toLowerCase().includes(query.toLowerCase()) ||
+        transaction.consumer?.water_meter_no?.toLowerCase().includes(query.toLowerCase()) ||
+        transaction.consumer?.accounts?.email?.toLowerCase().includes(query.toLowerCase())
       )
     }
 
@@ -355,13 +355,13 @@ export default function CashierTransactionsPage() {
                       </TableCell>
                       <TableCell>
                         <div className="space-y-1">
-                          <div className="font-medium">{transaction.consumer.accounts.full_name || 'Unknown Customer'}</div>
-                          <div className="text-sm text-muted-foreground">{transaction.consumer.accounts.email || 'No email'}</div>
+                          <div className="font-medium">{transaction.consumer?.accounts?.full_name || 'Unknown Customer'}</div>
+                          <div className="text-sm text-muted-foreground">{transaction.consumer?.accounts?.email || 'No email'}</div>
                         </div>
                       </TableCell>
                       <TableCell>
                         <div className="font-mono text-sm">
-                          {transaction.consumer.water_meter_no || 'N/A'}
+                          {transaction.consumer?.water_meter_no || 'N/A'}
                         </div>
                       </TableCell>
                       <TableCell>{transaction.billing_month}</TableCell>

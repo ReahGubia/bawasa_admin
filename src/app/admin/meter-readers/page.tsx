@@ -41,6 +41,8 @@ import { MeterReaderService, MeterReaderUser } from "@/lib/meter-reader-service"
 import { supabase } from "@/lib/supabase"
 import { useEffect, useState } from "react"
 import { AddMeterReaderDialog } from "@/components/add-meter-reader-dialog"
+import { AssignConsumersDialog } from "@/components/assign-consumers-dialog"
+import { ViewAssignedConsumersDialog } from "@/components/view-assigned-consumers-dialog"
 
 export default function MeterReaderManagementPage() {
   const [meterReaders, setMeterReaders] = useState<MeterReaderUser[]>([])
@@ -48,6 +50,11 @@ export default function MeterReaderManagementPage() {
   const [error, setError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
   const [filteredMeterReaders, setFilteredMeterReaders] = useState<MeterReaderUser[]>([])
+  const [assignDialogOpen, setAssignDialogOpen] = useState(false)
+  const [selectedMeterReaderForAssignment, setSelectedMeterReaderForAssignment] = useState<{id: number, name: string} | null>(null)
+  const [viewAssignedDialogOpen, setViewAssignedDialogOpen] = useState(false)
+  const [selectedMeterReaderForViewing, setSelectedMeterReaderForViewing] = useState<{id: number, name: string} | null>(null)
+  const [assignmentCounts, setAssignmentCounts] = useState<Record<number, number>>({})
 
   // Fetch meter readers from Supabase
   const fetchMeterReaders = async () => {
@@ -70,6 +77,9 @@ export default function MeterReaderManagementPage() {
         console.log('✨ Meter readers fetched:', data)
         setMeterReaders(data)
         setFilteredMeterReaders(data)
+        
+        // Fetch assignment counts for each meter reader
+        fetchAssignmentCounts(data.map(reader => reader.meter_reader_id).filter(Boolean))
       } else {
         console.log('📭 No data returned from Supabase')
         setMeterReaders([])
@@ -80,6 +90,34 @@ export default function MeterReaderManagementPage() {
       setError('An unexpected error occurred')
     } finally {
       setLoading(false)
+    }
+  }
+
+  // Fetch assignment counts for meter readers
+  const fetchAssignmentCounts = async (meterReaderIds: (number | null)[]) => {
+    try {
+      const counts: Record<number, number> = {}
+      
+      for (const meterReaderId of meterReaderIds) {
+        if (!meterReaderId) continue
+        
+        // Get count from junction table if it exists
+        const { count, error } = await supabase
+          .from('meter_reader_assignments')
+          .select('*', { count: 'exact', head: true })
+          .eq('meter_reader_id', meterReaderId)
+        
+        if (!error) {
+          counts[meterReaderId] = count || 0
+        } else if (error.code === '42P01') {
+          // Table doesn't exist yet, use old field
+          counts[meterReaderId] = 0
+        }
+      }
+      
+      setAssignmentCounts(counts)
+    } catch (err) {
+      console.error('Error fetching assignment counts:', err)
     }
   }
 
@@ -204,8 +242,7 @@ export default function MeterReaderManagementPage() {
                     <TableHead>Name</TableHead>
                     <TableHead>Email</TableHead>
                     <TableHead>Mobile Number</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Assigned Consumer</TableHead>
+                    <TableHead>Assigned</TableHead>
                     <TableHead>Created</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
@@ -228,28 +265,11 @@ export default function MeterReaderManagementPage() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <div className="text-sm">
-                          {reader.status ? (
-                            <Badge variant={reader.status === 'active' ? 'default' : 'secondary'}>
-                              {reader.status}
-                            </Badge>
-                          ) : (
-                            <Badge variant="outline">No status</Badge>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="text-sm">
-                          {reader.assigned_consumer ? (
-                            <div className="space-y-1">
-                              <div className="font-medium">{reader.assigned_consumer.account?.full_name || 'Unknown Consumer'}</div>
-                              <div className="text-muted-foreground font-mono text-xs">
-                                Meter: {reader.assigned_consumer.water_meter_no}
-                              </div>
-                            </div>
-                          ) : (
-                            <span className="text-muted-foreground">Not assigned</span>
-                          )}
+                        <div className="flex items-center space-x-2">
+                          <Badge variant="secondary" className="bg-blue-50 text-blue-700 border-blue-200">
+                            <Users className="h-3 w-3 mr-1" />
+                            {assignmentCounts[reader.meter_reader_id] || 0} consumer{assignmentCounts[reader.meter_reader_id] !== 1 ? 's' : ''}
+                          </Badge>
                         </div>
                       </TableCell>
                       <TableCell>
@@ -267,6 +287,20 @@ export default function MeterReaderManagementPage() {
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
                             <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                            <DropdownMenuItem onClick={() => {
+                              setSelectedMeterReaderForViewing({id: reader.id, name: reader.full_name || 'Unknown'})
+                              setViewAssignedDialogOpen(true)
+                            }}>
+                              <Users className="h-4 w-4 mr-2" />
+                              View Assigned Consumers
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => {
+                              setSelectedMeterReaderForAssignment({id: reader.id, name: reader.full_name || 'Unknown'})
+                              setAssignDialogOpen(true)
+                            }}>
+                              <Droplets className="h-4 w-4 mr-2" />
+                              Assign Consumers
+                            </DropdownMenuItem>
                             <DropdownMenuItem>View Profile</DropdownMenuItem>
                             <DropdownMenuItem>Edit Reader</DropdownMenuItem>
                             <DropdownMenuItem>View Readings</DropdownMenuItem>
@@ -285,6 +319,26 @@ export default function MeterReaderManagementPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Assign Consumers Dialog */}
+      {selectedMeterReaderForAssignment && (
+        <AssignConsumersDialog
+          open={assignDialogOpen}
+          onOpenChange={setAssignDialogOpen}
+          meterReaderId={selectedMeterReaderForAssignment.id}
+          meterReaderName={selectedMeterReaderForAssignment.name}
+        />
+      )}
+
+      {/* View Assigned Consumers Dialog */}
+      {selectedMeterReaderForViewing && (
+        <ViewAssignedConsumersDialog
+          open={viewAssignedDialogOpen}
+          onOpenChange={setViewAssignedDialogOpen}
+          meterReaderId={selectedMeterReaderForViewing.id}
+          meterReaderName={selectedMeterReaderForViewing.name}
+        />
+      )}
     </AdminLayout>
   )
 }

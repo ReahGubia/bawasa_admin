@@ -4,9 +4,9 @@ export interface MeterReading {
   id: string
   consumer_id: string
   reading_date: string
-  previous_reading: number
-  present_reading: number
-  consumption_cubic_meters: number
+  previous_reading: number | null
+  present_reading: number | null
+  consumption_cubic_meters: number | null
   created_at: string
   updated_at: string
 }
@@ -17,6 +17,7 @@ export interface MeterReadingWithUser extends MeterReading {
   water_meter_no: string
   payment_status: 'unpaid' | 'partial' | 'paid' | 'overdue'
   meter_reading_date: string // Alias for reading_date for compatibility
+  billing_month?: string
 }
 
 export interface LatestMeterReadingByUser extends MeterReadingWithUser {
@@ -30,6 +31,7 @@ export class MeterReadingsService {
   static async getLatestMeterReadingsByUser(): Promise<LatestMeterReadingByUser[]> {
     try {
       // Get meter readings with consumer and account information
+      // Only fetch readings where reading_assigned is true
       const { data, error } = await supabase
         .from('bawasa_meter_readings')
         .select(`
@@ -42,9 +44,11 @@ export class MeterReadingsService {
             )
           ),
           bawasa_billings!meter_reading_id (
-            payment_status
+            payment_status,
+            billing_month
           )
         `)
+        .eq('reading_assigned', true)
         .order('created_at', { ascending: false })
 
       if (error) {
@@ -74,7 +78,8 @@ export class MeterReadingsService {
           water_meter_no: consumer?.water_meter_no || '',
           user_email: account?.email || '',
           user_name: account?.full_name || 'Unknown User',
-          payment_status: billing?.[0]?.payment_status || 'unpaid'
+          payment_status: billing?.[0]?.payment_status || 'unpaid',
+          billing_month: billing?.[0]?.billing_month || null
         }
       })
 
@@ -123,9 +128,11 @@ export class MeterReadingsService {
             )
           ),
           bawasa_billings!meter_reading_id (
-            payment_status
+            payment_status,
+            billing_month
           )
         `)
+        .eq('reading_assigned', true)
         .order('created_at', { ascending: false })
 
       if (error) {
@@ -152,7 +159,8 @@ export class MeterReadingsService {
           water_meter_no: consumer?.water_meter_no || '',
           user_email: account?.email || '',
           user_name: account?.full_name || 'Unknown User',
-          payment_status: billing?.[0]?.payment_status || 'unpaid'
+          payment_status: billing?.[0]?.payment_status || 'unpaid',
+          billing_month: billing?.[0]?.billing_month || null
         }
       })
     } catch (error) {
@@ -178,9 +186,11 @@ export class MeterReadingsService {
             )
           ),
           bawasa_billings!meter_reading_id (
-            payment_status
+            payment_status,
+            billing_month
           )
         `)
+        .eq('reading_assigned', true)
         .eq('bawasa_billings.payment_status', status)
         .order('created_at', { ascending: false })
 
@@ -208,7 +218,8 @@ export class MeterReadingsService {
           water_meter_no: consumer?.water_meter_no || '',
           user_email: account?.email || '',
           user_name: account?.full_name || 'Unknown User',
-          payment_status: billing?.[0]?.payment_status || 'unpaid'
+          payment_status: billing?.[0]?.payment_status || 'unpaid',
+          billing_month: billing?.[0]?.billing_month || null
         }
       })
     } catch (error) {
@@ -299,9 +310,11 @@ export class MeterReadingsService {
             )
           ),
           bawasa_billings!meter_reading_id (
-            payment_status
+            payment_status,
+            billing_month
           )
         `)
+        .eq('reading_assigned', true)
         .or(`consumers.accounts.full_name.ilike.%${query}%,consumers.accounts.email.ilike.%${query}%`)
         .order('created_at', { ascending: false })
 
@@ -329,7 +342,8 @@ export class MeterReadingsService {
           water_meter_no: consumer?.water_meter_no || '',
           user_email: account?.email || '',
           user_name: account?.full_name || 'Unknown User',
-          payment_status: billing?.[0]?.payment_status || 'unpaid'
+          payment_status: billing?.[0]?.payment_status || 'unpaid',
+          billing_month: billing?.[0]?.billing_month || null
         }
       })
     } catch (error) {
@@ -356,7 +370,8 @@ export class MeterReadingsService {
             )
           ),
           bawasa_billings!meter_reading_id (
-            payment_status
+            payment_status,
+            billing_month
           )
         `)
         .eq('consumer_id', userId)
@@ -386,7 +401,8 @@ export class MeterReadingsService {
           water_meter_no: consumer?.water_meter_no || '',
           user_email: account?.email || '',
           user_name: account?.full_name || 'Unknown User',
-          payment_status: billing?.[0]?.payment_status || 'unpaid'
+          payment_status: billing?.[0]?.payment_status || 'unpaid',
+          billing_month: billing?.[0]?.billing_month || null
         }
       })
     } catch (error) {
@@ -394,4 +410,118 @@ export class MeterReadingsService {
       throw error
     }
   }
+
+  /**
+   * Create empty meter readings for all consumers for a new billing month
+   * This is called when transitioning to a new billing month
+   * Meter readers will fill in the readings via the mobile app
+   */
+  static async createEmptyReadingsForNewMonth(month: string, year: number): Promise<{ data: MeterReading[] | null; error: any }> {
+    try {
+      console.log(`🔄 Creating empty meter readings for ${month} ${year}...`)
+
+      // Get all consumers
+      const { data: consumers, error: consumersError } = await supabase
+        .from('consumers')
+        .select('id, water_meter_no')
+
+      if (consumersError) {
+        console.error('Error fetching consumers:', consumersError)
+        return { data: null, error: consumersError }
+      }
+
+      if (!consumers || consumers.length === 0) {
+        console.log('No consumers found')
+        return { data: [], error: null }
+      }
+
+      // Set reading_date to the first day of the month
+      const readingDate = new Date(year, getMonthNumber(month), 1).toISOString().split('T')[0]
+
+      // Check if readings already exist for this month
+      const { data: existingReadings, error: checkError } = await supabase
+        .from('bawasa_meter_readings')
+        .select('id, consumer_id, reading_date')
+        .eq('reading_date', readingDate)
+
+      if (checkError) {
+        console.error('Error checking existing readings:', checkError)
+        return { data: null, error: checkError }
+      }
+
+      const existingConsumerIds = new Set(existingReadings?.map(r => r.consumer_id) || [])
+      
+      // Filter out consumers who already have readings for this month
+      const consumersToProcess = consumers.filter(c => !existingConsumerIds.has(c.id))
+
+      if (consumersToProcess.length === 0) {
+        console.log('All consumers already have meter readings for this month')
+        return { data: [], error: null }
+      }
+
+      // Get the last reading for each consumer to use as previous_reading
+      const readingsToInsert: Array<{
+        consumer_id: string
+        reading_date: string
+        previous_reading: number | null
+        present_reading: number | null
+      }> = []
+
+      for (const consumer of consumersToProcess) {
+        // Get the last meter reading for this consumer
+        const { data: lastReading, error: lastReadingError } = await supabase
+          .from('bawasa_meter_readings')
+          .select('present_reading')
+          .eq('consumer_id', consumer.id)
+          .order('reading_date', { ascending: false })
+          .limit(1)
+          .single()
+
+        if (lastReadingError && lastReadingError.code !== 'PGRST116') {
+          console.error(`Error fetching last reading for consumer ${consumer.water_meter_no}:`, lastReadingError)
+        }
+
+        // Initialize present_reading with previous_reading value
+        // Meter reader will update this when they visit the consumer
+        const previousReading = lastReading?.present_reading || 0
+        const presentReading = previousReading // Initialize with same value
+        
+        readingsToInsert.push({
+          consumer_id: consumer.id,
+          reading_date: readingDate,
+          previous_reading: previousReading, // Use last reading's present_reading as previous
+          present_reading: presentReading // Initialize with previous reading value
+        })
+      }
+
+      // Insert all readings in batch
+      const { data: insertedReadings, error: insertError } = await supabase
+        .from('bawasa_meter_readings')
+        .insert(readingsToInsert)
+        .select()
+
+      if (insertError) {
+        console.error('Error inserting meter readings:', insertError)
+        return { data: null, error: insertError }
+      }
+
+      console.log(`✅ Created ${insertedReadings?.length || 0} empty meter readings for ${month} ${year}`)
+      return { data: insertedReadings as any, error: null }
+    } catch (error) {
+      console.error('Error in createEmptyReadingsForNewMonth:', error)
+      return { data: null, error }
+    }
+  }
+}
+
+/**
+ * Helper function to convert month name to number (0-11)
+ */
+function getMonthNumber(month: string): number {
+  const months: { [key: string]: number } = {
+    'January': 0, 'February': 1, 'March': 2, 'April': 3,
+    'May': 4, 'June': 5, 'July': 6, 'August': 7,
+    'September': 8, 'October': 9, 'November': 10, 'December': 11
+  }
+  return months[month] ?? 0
 }

@@ -28,31 +28,51 @@ export default function AdminDashboardPage() {
         setLoading(true)
         setError(null)
 
-        // Fetch all dashboard data in parallel
-        const [statsResult, meterReadingsResult, issuesResult, revenueResult] = await Promise.all([
-          DashboardService.getStats(),
-          DashboardService.getRecentMeterReadings(),
-          DashboardService.getRecentIssues(),
-          DashboardService.getRevenueStats()
+        // Fetch all dashboard data in parallel but handle each independently
+        const statsPromise = DashboardService.getStats().then(result => {
+          if (result.error) {
+            console.error('Stats error:', result.error)
+          } else {
+            setStats(result.data || null)
+          }
+          return result
+        })
+
+        const meterReadingsPromise = DashboardService.getRecentMeterReadings().then(result => {
+          if (result.error) {
+            console.error('Meter readings error:', result.error)
+          } else {
+            setMeterReadings(result.data || [])
+          }
+          return result
+        })
+
+        const issuesPromise = DashboardService.getRecentIssues().then(result => {
+          if (result.error) {
+            console.error('Issues error:', result.error)
+          } else {
+            setIssues(result.data || [])
+          }
+          return result
+        })
+
+        const revenuePromise = DashboardService.getRevenueStats().then(result => {
+          if (result.error) {
+            console.error('Revenue error:', result.error)
+          } else {
+            setRevenueStats(result.data || null)
+          }
+          return result
+        })
+
+        // Wait for all promises to settle (not necessarily complete successfully)
+        await Promise.allSettled([
+          statsPromise,
+          meterReadingsPromise,
+          issuesPromise,
+          revenuePromise
         ])
 
-        if (statsResult.error) {
-          throw new Error(`Failed to fetch stats: ${statsResult.error.message}`)
-        }
-        if (meterReadingsResult.error) {
-          throw new Error(`Failed to fetch meter readings: ${meterReadingsResult.error.message}`)
-        }
-        if (issuesResult.error) {
-          throw new Error(`Failed to fetch issues: ${issuesResult.error.message}`)
-        }
-        if (revenueResult.error) {
-          throw new Error(`Failed to fetch revenue: ${revenueResult.error.message}`)
-        }
-
-        setStats(statsResult.data || null)
-        setMeterReadings(meterReadingsResult.data || [])
-        setIssues(issuesResult.data || [])
-        setRevenueStats(revenueResult.data || null)
       } catch (err) {
         console.error('Error fetching dashboard data:', err)
         setError(err instanceof Error ? err.message : 'An unexpected error occurred')

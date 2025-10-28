@@ -277,9 +277,7 @@ export function IssueDetailsModal({ isOpen, onClose, issueId }: IssueDetailsModa
               <Button variant="outline" onClick={onClose}>
                 Close
               </Button>
-              <Button>
-                Assign to Technician
-              </Button>
+              
             </div>
           </div>
         ) : null}

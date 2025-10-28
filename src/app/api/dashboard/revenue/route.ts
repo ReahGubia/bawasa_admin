@@ -16,53 +16,69 @@ export async function GET() {
     const currentYear = now.getFullYear()
     const currentMonth = now.getMonth()
     
-    // Get last 12 months for monthly revenue
-    const monthlyRevenue = []
+    // Get start date for last 12 months
+    const startDate = new Date(currentYear, currentMonth - 11, 1)
+    const endDate = new Date(currentYear, currentMonth + 1, 0)
+    
+    // Fetch all relevant bills in a single query
+    const { data: allBills, error: billsError } = await supabase
+      .from('bawasa_billings')
+      .select('id, amount_paid, payment_date, payment_status, billing_month')
+      .or('payment_date.gte.' + startDate.toISOString().split('T')[0] + ',billing_month.not.is.null')
+    
+    if (billsError) {
+      console.error('❌ Error fetching bills:', billsError)
+      return NextResponse.json(
+        { error: 'Failed to fetch bills data' },
+        { status: 500 }
+      )
+    }
+    
+    // Group by month and calculate revenue
+    const monthlyMap = new Map<string, { revenue: number; billsCount: number }>()
+    
+    // Initialize all 12 months with zero values
     for (let i = 11; i >= 0; i--) {
       const date = new Date(currentYear, currentMonth - i, 1)
-      const monthStart = new Date(date.getFullYear(), date.getMonth(), 1)
-      const monthEnd = new Date(date.getFullYear(), date.getMonth() + 1, 0)
-      
       const monthName = date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
-      
-      // Fetch paid amounts for this month from bawasa_billings
-      const { data: payments, error: paymentsError } = await supabase
-        .from('bawasa_billings')
-        .select('amount_paid')
-        .in('payment_status', ['paid', 'partial'])
-        .not('payment_date', 'is', null)
-        .gte('payment_date', monthStart.toISOString().split('T')[0])
-        .lte('payment_date', monthEnd.toISOString().split('T')[0])
-      
-      if (paymentsError) {
-        console.error(`❌ Error fetching payments for ${monthName}:`, paymentsError)
-        monthlyRevenue.push({
-          month: monthName,
-          revenue: 0,
-          billsCount: 0
-        })
-        continue
-      }
-      
-      const totalRevenue = payments?.reduce((sum, payment) => sum + (payment.amount_paid || 0), 0) || 0
-      
-      // Count bills issued in this month (based on billing_month field)
-      const billingMonthStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
-      const { count: billsCount, error: billsError } = await supabase
-        .from('bawasa_billings')
-        .select('id', { count: 'exact', head: true })
-        .eq('billing_month', billingMonthStr)
-      
-      if (billsError) {
-        console.error(`❌ Error fetching bills count for ${monthName}:`, billsError)
-      }
-      
-      monthlyRevenue.push({
-        month: monthName,
-        revenue: Math.round(totalRevenue * 100) / 100, // Round to 2 decimal places
-        billsCount: billsCount || 0
-      })
+      monthlyMap.set(monthName, { revenue: 0, billsCount: 0 })
     }
+    
+    // Process all bills and aggregate by month
+    allBills?.forEach(bill => {
+      // Count bills by billing_month
+      if (bill.billing_month) {
+        const dateParts = bill.billing_month.split('-')
+        if (dateParts.length >= 2) {
+          const year = parseInt(dateParts[0])
+          const month = parseInt(dateParts[1])
+          const date = new Date(year, month - 1, 1)
+          const monthName = date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+          
+          if (monthlyMap.has(monthName)) {
+            const current = monthlyMap.get(monthName)!
+            current.billsCount++
+          }
+        }
+      }
+      
+      // Calculate revenue from payments
+      if (bill.payment_date && ['paid', 'partial'].includes(bill.payment_status)) {
+        const paymentDate = new Date(bill.payment_date)
+        const monthName = paymentDate.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+        
+        if (monthlyMap.has(monthName)) {
+          const current = monthlyMap.get(monthName)!
+          current.revenue += bill.amount_paid || 0
+        }
+      }
+    })
+    
+    const monthlyRevenue = Array.from(monthlyMap.entries()).map(([month, data]) => ({
+      month,
+      revenue: Math.round(data.revenue * 100) / 100,
+      billsCount: data.billsCount
+    }))
     
     // Get total revenue statistics from bawasa_billings
     const [

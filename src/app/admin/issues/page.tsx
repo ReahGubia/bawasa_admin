@@ -25,7 +25,8 @@ import {
   User,
   Calendar,
   Phone,
-  Loader2
+  Loader2,
+  RefreshCw
 } from "lucide-react"
 import {
   DropdownMenu,
@@ -38,6 +39,8 @@ import {
 import { useEffect, useState } from "react"
 import { IssueService, IssueReportWithUser } from "@/lib/issue-service"
 import { IssueDetailsModal } from "@/components/issue-details-modal"
+import { ScheduleFixDialog } from "@/components/schedule-fix-dialog"
+import { toast } from "sonner"
 
 export default function IssuesManagementPage() {
   const [issues, setIssues] = useState<IssueReportWithUser[]>([])
@@ -47,6 +50,8 @@ export default function IssuesManagementPage() {
   const [priorityFilter, setPriorityFilter] = useState<string>("all")
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false)
   const [selectedIssueId, setSelectedIssueId] = useState<number | null>(null)
+  const [scheduleFixDialogOpen, setScheduleFixDialogOpen] = useState(false)
+  const [selectedIssueForSchedule, setSelectedIssueForSchedule] = useState<{id: number, title: string, customer: string} | null>(null)
 
   useEffect(() => {
     loadIssues()
@@ -132,9 +137,26 @@ export default function IssuesManagementPage() {
     }
   }
 
-  const getStatusBadge = (status: string) => {
-    // Since issue_report doesn't have status, we'll use a default "open" status
-    return <Badge variant="destructive"><XCircle className="h-3 w-3 mr-1" />Open</Badge>
+  const getStatusBadge = (status?: string | null) => {
+    if (!status) {
+      return <Badge variant="destructive"><XCircle className="h-3 w-3 mr-1" />Open</Badge>
+    }
+    
+    switch (status.toLowerCase()) {
+      case "open":
+        return <Badge variant="destructive"><XCircle className="h-3 w-3 mr-1" />Open</Badge>
+      case "assigned":
+        return <Badge variant="secondary" className="bg-blue-100 text-blue-800"><User className="h-3 w-3 mr-1" />Assigned</Badge>
+      case "in_progress":
+        return <Badge variant="secondary" className="bg-yellow-100 text-yellow-800"><Clock className="h-3 w-3 mr-1" />In Progress</Badge>
+      case "scheduled":
+        return <Badge variant="secondary" className="bg-purple-100 text-purple-800"><Calendar className="h-3 w-3 mr-1" />Scheduled</Badge>
+      case "resolved":
+      case "closed":
+        return <Badge variant="default" className="bg-green-100 text-green-800"><CheckCircle className="h-3 w-3 mr-1" />Resolved</Badge>
+      default:
+        return <Badge variant="outline">{status}</Badge>
+    }
   }
 
   const handleViewDetails = (issueId: number) => {
@@ -145,6 +167,25 @@ export default function IssuesManagementPage() {
   const handleCloseDetailsModal = () => {
     setIsDetailsModalOpen(false)
     setSelectedIssueId(null)
+  }
+
+  const handleResolveIssue = async (issueId: number) => {
+    try {
+      const result = await IssueService.updateIssueStatus(issueId, 'resolved')
+      
+      if (result.error) {
+        toast.error(`Failed to resolve issue: ${result.error.message}`)
+        return
+      }
+
+      toast.success("Issue resolved successfully!")
+      
+      // Reload issues to show updated status
+      await loadIssues()
+    } catch (error) {
+      console.error('Error resolving issue:', error)
+      toast.error('Failed to resolve issue')
+    }
   }
 
   return (
@@ -158,9 +199,13 @@ export default function IssuesManagementPage() {
               Manage customer issues and support tickets
             </p>
           </div>
-          <Button>
-            <MessageSquare className="h-4 w-4 mr-2" />
-            New Ticket
+          <Button 
+            onClick={loadIssues}
+            variant="outline"
+            disabled={loading}
+          >
+            <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+            Refresh
           </Button>
         </div>
 
@@ -253,7 +298,7 @@ export default function IssuesManagementPage() {
                         <Badge variant="outline">{issue.issue_type || 'Unknown'}</Badge>
                       </TableCell>
                       <TableCell>{getPriorityBadge(issue.priority || 'low')}</TableCell>
-                      <TableCell>{getStatusBadge('open')}</TableCell>
+                      <TableCell>{getStatusBadge(issue.status)}</TableCell>
                       <TableCell>
                         <div className="flex items-center space-x-1">
                           <Calendar className="h-3 w-3 text-muted-foreground" />
@@ -273,19 +318,28 @@ export default function IssuesManagementPage() {
                             <DropdownMenuItem onClick={() => handleViewDetails(issue.id)}>
                               View Details
                             </DropdownMenuItem>
-                            <DropdownMenuItem>Assign to Technician</DropdownMenuItem>
-                            <DropdownMenuItem>Update Status</DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem>
-                              <MessageSquare className="h-4 w-4 mr-2" />
-                              Add Comment
-                            </DropdownMenuItem>
-                            <DropdownMenuItem>
-                              <Phone className="h-4 w-4 mr-2" />
-                              Contact Customer
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem>Close Ticket</DropdownMenuItem>
+                            {issue.status?.toLowerCase() !== 'assigned' && (
+                              <DropdownMenuItem onClick={() => {
+                                setSelectedIssueForSchedule({
+                                  id: issue.id,
+                                  title: issue.issue_title || 'No title',
+                                  customer: issue.user_name || 'Unknown Customer'
+                                })
+                                setScheduleFixDialogOpen(true)
+                              }}>
+                                <Calendar className="h-4 w-4 mr-2" />
+                                Schedule Fix
+                              </DropdownMenuItem>
+                            )}
+                            
+                            {issue.status?.toLowerCase() === 'assigned' && (
+                              <DropdownMenuItem onClick={() => handleResolveIssue(issue.id)}>
+                                <CheckCircle className="h-4 w-4 mr-2" />
+                                Resolve Issue
+                              </DropdownMenuItem>
+                            )}
+                            
+                           
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>
@@ -305,6 +359,18 @@ export default function IssuesManagementPage() {
           onClose={handleCloseDetailsModal}
           issueId={selectedIssueId}
         />
+
+        {/* Schedule Fix Dialog */}
+        {selectedIssueForSchedule && (
+          <ScheduleFixDialog
+            open={scheduleFixDialogOpen}
+            onOpenChange={setScheduleFixDialogOpen}
+            issueId={selectedIssueForSchedule.id}
+            issueTitle={selectedIssueForSchedule.title}
+            customerName={selectedIssueForSchedule.customer}
+            onScheduleSet={loadIssues}
+          />
+        )}
       </div>
     </AdminLayout>
   )

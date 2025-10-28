@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { BAWASABillingCalculator } from '@/lib/bawasa-billing-calculator'
+import { EmailService } from '@/lib/email-service'
 import bcrypt from 'bcryptjs'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
@@ -25,10 +26,8 @@ export async function POST(request: NextRequest) {
       previous_reading,
       present_reading,
       consumption_cubic_meters,
-      amount_current_billing,
       due_date,
-      payment_status,
-      notes
+      payment_status
     } = body
 
     // Validate required fields
@@ -191,6 +190,37 @@ export async function POST(request: NextRequest) {
     }
 
     console.log('✅ Billing record created:', billingData_result.id)
+
+    // Step 7: Send bill email to consumer
+    console.log('📧 Sending bill email to consumer...')
+    try {
+      const billEmailData = {
+        consumerName: full_name,
+        email: email,
+        waterMeterNo: water_meter_no,
+        billingMonth: billing_month || new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
+        previousReading: parseFloat(previous_reading) || 0,
+        presentReading: parseFloat(present_reading) || 0,
+        consumption: consumption,
+        amountCurrentBilling: billingCalculation.amount_current_billing,
+        dueDate: due_date || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        paymentStatus: payment_status || 'unpaid',
+        address: address || undefined,
+        phone: phone || undefined
+      }
+
+      const emailResult = await EmailService.sendBillEmail(billEmailData)
+      
+      if (emailResult.success) {
+        console.log('✅ Bill email sent successfully to:', email)
+      } else {
+        console.error('❌ Failed to send bill email:', emailResult.error)
+        // Don't fail the entire operation if email fails, just log it
+      }
+    } catch (emailError) {
+      console.error('💥 Error sending bill email:', emailError)
+      // Don't fail the entire operation if email fails, just log it
+    }
 
     return NextResponse.json({
       success: true,
