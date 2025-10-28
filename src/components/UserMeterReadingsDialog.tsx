@@ -123,7 +123,6 @@ export function UserMeterReadingsDialog({
                   <TableHead>Previous Reading</TableHead>
                   <TableHead>Present Reading</TableHead>
                   <TableHead>Consumption</TableHead>
-                  <TableHead>Reading Date</TableHead>
                   <TableHead>Payment Status</TableHead>
                   <TableHead>Submitted</TableHead>
                 </TableRow>
@@ -140,7 +139,6 @@ export function UserMeterReadingsDialog({
                     <TableCell className="font-mono font-semibold text-blue-600">
                       {reading.consumption_cubic_meters?.toLocaleString() || '0'} cu.m
                     </TableCell>
-                    <TableCell>{formatDate(reading.reading_date)}</TableCell>
                     <TableCell>{getStatusBadge(reading.payment_status)}</TableCell>
                     <TableCell>{formatDate(reading.created_at)}</TableCell>
                   </TableRow>

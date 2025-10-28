@@ -38,6 +38,7 @@ import { MeterReadingsService, MeterReadingWithUser, LatestMeterReadingByUser } 
 import { useEffect, useState } from "react"
 import { supabase } from "@/lib/supabase"
 import { UserMeterReadingsDialog } from "@/components/UserMeterReadingsDialog"
+import { MeterReadingDetailsDialog } from "@/components/MeterReadingDetailsDialog"
 
 export default function MeterReadingsPage() {
   const [meterReadings, setMeterReadings] = useState<LatestMeterReadingByUser[]>([])
@@ -53,6 +54,8 @@ export default function MeterReadingsPage() {
     email: string
   } | null>(null)
   const [isCreatingReadings, setIsCreatingReadings] = useState(false)
+  const [detailsDialogOpen, setDetailsDialogOpen] = useState(false)
+  const [selectedReading, setSelectedReading] = useState<LatestMeterReadingByUser | null>(null)
 
   // Load meter readings on component mount
   useEffect(() => {
@@ -173,6 +176,11 @@ export default function MeterReadingsPage() {
     setDialogOpen(true)
   }
 
+  const handleViewDetails = (reading: LatestMeterReadingByUser) => {
+    setSelectedReading(reading)
+    setDetailsDialogOpen(true)
+  }
+
   // Filter readings based on current filters
   const filteredReadings = meterReadings.filter(reading => {
     if (statusFilter !== 'all' && reading.payment_status !== statusFilter) {
@@ -260,7 +268,7 @@ export default function MeterReadingsPage() {
               Review latest meter readings by user - click on user to view complete history
             </p>
           </div>
-          <div className="flex items-center space-x-2">
+          {/* <div className="flex items-center space-x-2">
             <Button 
               onClick={handleCreateNewMonthReadings}
               disabled={isCreatingReadings}
@@ -278,11 +286,8 @@ export default function MeterReadingsPage() {
                 </>
               )}
             </Button>
-            <Button>
-              <TrendingUp className="h-4 w-4 mr-2" />
-              View Analytics
-            </Button>
-          </div>
+            
+          </div> */}
         </div>
 
         {/* Meter Readings Table */}
@@ -358,10 +363,7 @@ export default function MeterReadingsPage() {
                     <TableHead>User</TableHead>
                     <TableHead>Total Readings</TableHead>
                     <TableHead>Water Meter No</TableHead>
-                    <TableHead>Billing Month</TableHead>
                     <TableHead>Present Reading</TableHead>
-                    <TableHead>Reading Date</TableHead>
-                    <TableHead>Status</TableHead>
                     <TableHead>Last Submitted</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
@@ -369,7 +371,7 @@ export default function MeterReadingsPage() {
                 <TableBody>
                   {filteredReadings.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
+                      <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                         No meter readings found
                       </TableCell>
                     </TableRow>
@@ -395,14 +397,7 @@ export default function MeterReadingsPage() {
                         <TableCell>
                           <Badge variant="outline">{reading.water_meter_no}</Badge>
                         </TableCell>
-                        <TableCell>
-                          <Badge variant="secondary">
-                            {reading.billing_month || 'N/A'}
-                          </Badge>
-                        </TableCell>
                         <TableCell className="font-mono">{reading.present_reading?.toLocaleString() || '0'}</TableCell>
-                        <TableCell>{new Date(reading.meter_reading_date).toLocaleDateString()}</TableCell>
-                        <TableCell>{getStatusBadge(reading.payment_status)}</TableCell>
                         <TableCell>{new Date(reading.created_at).toLocaleDateString()}</TableCell>
                         <TableCell className="text-right">
                           <DropdownMenu>
@@ -414,29 +409,10 @@ export default function MeterReadingsPage() {
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
                               <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                              <DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleViewDetails(reading)}>
                                 <Eye className="h-4 w-4 mr-2" />
                                 View Details
                               </DropdownMenuItem>
-                              {reading.payment_status === 'unpaid' && (
-                                <>
-                                  <DropdownMenuItem 
-                                    onClick={() => handleStatusUpdate(reading.id, 'paid')}
-                                  >
-                                    <CheckCircle className="h-4 w-4 mr-2" />
-                                    Mark as Paid
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem 
-                                    onClick={() => handleStatusUpdate(reading.id, 'partial')}
-                                  >
-                                    <XCircle className="h-4 w-4 mr-2" />
-                                    Mark as Partial
-                                  </DropdownMenuItem>
-                                </>
-                              )}
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem>Edit Reading</DropdownMenuItem>
-                              <DropdownMenuItem>Download Receipt</DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </TableCell>
@@ -462,6 +438,13 @@ export default function MeterReadingsPage() {
           userEmail={selectedUser.email}
         />
       )}
+
+      {/* Meter Reading Details Dialog */}
+      <MeterReadingDetailsDialog
+        open={detailsDialogOpen}
+        onOpenChange={setDetailsDialogOpen}
+        reading={selectedReading}
+      />
     </AdminLayout>
   )
 }

@@ -20,7 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { UserPlus, Loader2, Home, DollarSign, Droplets, RefreshCw, Eye, EyeOff } from "lucide-react"
+import { UserPlus, Loader2, Home, RefreshCw, Eye, EyeOff } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { toast } from "sonner"
 
@@ -36,20 +36,6 @@ interface ConsumerFormData {
   phone: string
   address: string
   registered_voter: string
-  
-  // Water Meter Information
-  water_meter_no: string
-  billing_month: string
-  meter_reading_date: string
-  
-  // Initial Meter Readings
-  previous_reading: string
-  present_reading: string
-  
-  // Billing Information
-  due_date: string
-  payment_status: string
-  notes: string
 }
 
 export function AddConsumerDialog({ onConsumerAdded }: AddConsumerDialogProps) {
@@ -63,105 +49,16 @@ export function AddConsumerDialog({ onConsumerAdded }: AddConsumerDialogProps) {
     full_name: "",
     phone: "",
     address: "",
-    registered_voter: "no",
-    water_meter_no: "",
-    billing_month: "",
-    meter_reading_date: "",
-    previous_reading: "0",
-    present_reading: "0",
-    due_date: "",
-    payment_status: "unpaid",
-    notes: ""
+    registered_voter: "no"
   })
 
-  const [meterValidationError, setMeterValidationError] = useState<string | null>(null)
   const [passwordValidationError, setPasswordValidationError] = useState<string | null>(null)
   const [showPassword, setShowPassword] = useState(false)
 
   const handleInputChange = (field: keyof ConsumerFormData, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }))
     if (error) setError(null)
-    if (meterValidationError) setMeterValidationError(null)
     if (passwordValidationError) setPasswordValidationError(null)
-  }
-
-  // Check if water meter number already exists
-  const checkMeterNumber = async (meterNumber: string) => {
-    if (!meterNumber.trim()) {
-      setMeterValidationError(null)
-      return
-    }
-
-    try {
-      const response = await fetch('/api/consumers/check-meter', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ water_meter_no: meterNumber }),
-      })
-
-      const result = await response.json()
-
-      if (response.ok) {
-        if (result.exists) {
-          setMeterValidationError(`Water meter number ${meterNumber} already exists`)
-        } else {
-          setMeterValidationError(null)
-        }
-      } else {
-        console.error('Error checking meter number:', result.error)
-      }
-    } catch (err) {
-      console.error('Error checking meter number:', err)
-    }
-  }
-
-  // Debounced meter number validation
-  const debouncedCheckMeter = (() => {
-    let timeoutId: NodeJS.Timeout
-    return (meterNumber: string) => {
-      clearTimeout(timeoutId)
-      timeoutId = setTimeout(() => checkMeterNumber(meterNumber), 500)
-    }
-  })()
-
-  const generateWaterMeterNumber = async () => {
-    const currentYear = new Date().getFullYear()
-    let attempts = 0
-    const maxAttempts = 10
-    
-    while (attempts < maxAttempts) {
-      const randomNumber = Math.floor(Math.random() * 999) + 1
-      const meterNumber = `B-${currentYear}-${randomNumber.toString().padStart(3, '0')}`
-      
-      // Check if this meter number already exists
-      try {
-        const response = await fetch('/api/consumers/check-meter', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ water_meter_no: meterNumber }),
-        })
-
-        const result = await response.json()
-
-        if (response.ok && !result.exists) {
-          // Meter number is unique, use it
-          handleInputChange("water_meter_no", meterNumber)
-          setMeterValidationError(null)
-          return
-        }
-      } catch (err) {
-        console.error('Error checking generated meter number:', err)
-      }
-      
-      attempts++
-    }
-    
-    // If we couldn't generate a unique number after max attempts
-    setMeterValidationError('Unable to generate a unique meter number. Please try again.')
   }
 
   // Check if password already exists
@@ -260,48 +157,18 @@ export function AddConsumerDialog({ onConsumerAdded }: AddConsumerDialogProps) {
     setPasswordValidationError('Unable to generate a unique password. Please try again.')
   }
 
-  const calculateConsumption = () => {
-    const prev = parseFloat(formData.previous_reading) || 0
-    const present = parseFloat(formData.present_reading) || 0
-    return Math.max(0, present - prev)
-  }
-
-  const getCurrentMonth = () => {
-    const now = new Date()
-    const monthNames = [
-      "January", "February", "March", "April", "May", "June",
-      "July", "August", "September", "October", "November", "December"
-    ]
-    return `${monthNames[now.getMonth()]} ${now.getFullYear()}`
-  }
-
-  const getDefaultDueDate = () => {
-    const now = new Date()
-    const dueDate = new Date(now.getFullYear(), now.getMonth() + 1, 15) // 15th of next month
-    return dueDate.toISOString().split('T')[0]
-  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
     // Validation
-    if (!formData.email || !formData.password || !formData.full_name || !formData.water_meter_no) {
+    if (!formData.email || !formData.password || !formData.full_name) {
       setError("Please fill in all required fields")
-      return
-    }
-
-    if (meterValidationError) {
-      setError("Please fix the water meter number error before submitting")
       return
     }
 
     if (passwordValidationError) {
       setError("Please fix the password error before submitting")
-      return
-    }
-
-    if (parseFloat(formData.present_reading) < parseFloat(formData.previous_reading)) {
-      setError("Present reading cannot be less than previous reading")
       return
     }
 
@@ -316,11 +183,6 @@ export function AddConsumerDialog({ onConsumerAdded }: AddConsumerDialogProps) {
         },
         body: JSON.stringify({
           ...formData,
-          billing_month: formData.billing_month || getCurrentMonth(),
-          meter_reading_date: formData.meter_reading_date || new Date().toISOString().split('T')[0],
-          due_date: formData.due_date || getDefaultDueDate(),
-          consumption_cubic_meters: calculateConsumption(),
-          amount_current_billing: calculateConsumption() * 25, // Assuming 25 pesos per cubic meter
         }),
       })
 
@@ -332,9 +194,9 @@ export function AddConsumerDialog({ onConsumerAdded }: AddConsumerDialogProps) {
 
       console.log('✅ Consumer created successfully:', result)
       
-      // Show success message with email notification
+      // Show success message
       toast.success("Consumer created successfully!", {
-        description: `A water bill has been sent to ${formData.email}. Please check the consumer's email for bill details.`,
+        description: `Consumer account has been created for ${formData.full_name}.`,
         duration: 5000,
       })
       
@@ -345,15 +207,7 @@ export function AddConsumerDialog({ onConsumerAdded }: AddConsumerDialogProps) {
         full_name: "",
         phone: "",
         address: "",
-        registered_voter: "no",
-        water_meter_no: "",
-        billing_month: "",
-        meter_reading_date: "",
-        previous_reading: "0",
-        present_reading: "0",
-        due_date: "",
-        payment_status: "unpaid",
-        notes: ""
+        registered_voter: "no"
       })
       
       setOpen(false)
@@ -367,8 +221,6 @@ export function AddConsumerDialog({ onConsumerAdded }: AddConsumerDialogProps) {
     }
   }
 
-  const consumption = calculateConsumption()
-
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
@@ -377,11 +229,11 @@ export function AddConsumerDialog({ onConsumerAdded }: AddConsumerDialogProps) {
           Add New Consumer
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[800px] max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Add New Water Billing Record</DialogTitle>
+          <DialogTitle>Add New Consumer</DialogTitle>
           <DialogDescription>
-            Create a new water billing record with meter and consumer information.
+            Create a new consumer account with personal information.
           </DialogDescription>
         </DialogHeader>
         
@@ -518,159 +370,6 @@ export function AddConsumerDialog({ onConsumerAdded }: AddConsumerDialogProps) {
             </CardContent>
           </Card>
 
-          {/* Water Meter Information */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center space-x-2">
-                <Droplets className="h-5 w-5" />
-                <span>Water Meter Information</span>
-              </CardTitle>
-              <CardDescription>
-                Water meter details and initial readings
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="water_meter_no">Water Meter Number *</Label>
-                  <div className="flex space-x-2">
-                    <Input
-                      id="water_meter_no"
-                      placeholder="B-2024-001"
-                      value={formData.water_meter_no}
-                      onChange={(e) => {
-                        handleInputChange("water_meter_no", e.target.value)
-                        debouncedCheckMeter(e.target.value)
-                      }}
-                      required
-                      className={meterValidationError ? "border-red-500" : ""}
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={generateWaterMeterNumber}
-                      className="whitespace-nowrap"
-                    >
-                      Generate
-                    </Button>
-                  </div>
-                  {meterValidationError && (
-                    <p className="text-sm text-red-600">{meterValidationError}</p>
-                  )}
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="billing_month">Billing Month</Label>
-                  <Input
-                    id="billing_month"
-                    placeholder={getCurrentMonth()}
-                    value={formData.billing_month}
-                    onChange={(e) => handleInputChange("billing_month", e.target.value)}
-                  />
-                </div>
-              </div>
-              
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="previous_reading">Previous Reading (cu.m)</Label>
-                  <Input
-                    id="previous_reading"
-                    type="number"
-                    step="0.01"
-                    placeholder="0.00"
-                    value={formData.previous_reading}
-                    onChange={(e) => handleInputChange("previous_reading", e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="present_reading">Present Reading (cu.m)</Label>
-                  <Input
-                    id="present_reading"
-                    type="number"
-                    step="0.01"
-                    placeholder="0.00"
-                    value={formData.present_reading}
-                    onChange={(e) => handleInputChange("present_reading", e.target.value)}
-                  />
-                </div>
-              </div>
-              
-              {consumption > 0 && (
-                <div className="bg-blue-50 border border-blue-200 rounded-md p-3">
-                  <div className="flex items-center space-x-2 text-blue-800">
-                    <Droplets className="h-4 w-4" />
-                    <span className="text-sm font-medium">
-                      Consumption: {consumption.toFixed(2)} cubic meters
-                    </span>
-                  </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Billing Information */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center space-x-2">
-                <DollarSign className="h-5 w-5" />
-                <span>Billing Information</span>
-              </CardTitle>
-              <CardDescription>
-                Billing period and payment details
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="meter_reading_date">Meter Reading Date</Label>
-                  <Input
-                    id="meter_reading_date"
-                    type="date"
-                    value={formData.meter_reading_date}
-                    onChange={(e) => handleInputChange("meter_reading_date", e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="due_date">Due Date</Label>
-                  <Input
-                    id="due_date"
-                    type="date"
-                    value={formData.due_date}
-                    onChange={(e) => handleInputChange("due_date", e.target.value)}
-                  />
-                </div>
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="payment_status">Payment Status</Label>
-                <Select
-                  value={formData.payment_status}
-                  onValueChange={(value) => handleInputChange("payment_status", value)}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select payment status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="unpaid">Unpaid</SelectItem>
-                    <SelectItem value="partial">Partial</SelectItem>
-                    <SelectItem value="paid">Paid</SelectItem>
-                    <SelectItem value="overdue">Overdue</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="notes">Notes</Label>
-                <Textarea
-                  id="notes"
-                  placeholder="Additional notes or comments..."
-                  value={formData.notes}
-                  onChange={(e) => handleInputChange("notes", e.target.value)}
-                  rows={2}
-                />
-              </div>
-            </CardContent>
-          </Card>
-
           {/* Form Actions */}
           <div className="flex justify-end space-x-2 pt-4">
             <Button
@@ -683,7 +382,7 @@ export function AddConsumerDialog({ onConsumerAdded }: AddConsumerDialogProps) {
             </Button>
             <Button type="submit" disabled={loading}>
               {loading && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              Create Water Billing Record
+              Create Consumer Account
             </Button>
           </div>
         </form>

@@ -32,6 +32,8 @@ interface Consumer {
   address: string
   needsReading: boolean
   lastReadingDate: string | null
+  isAlreadyAssigned: boolean
+  existingAssignmentStatus?: string
 }
 
 export function AssignConsumersDialog({
@@ -87,18 +89,32 @@ export function AssignConsumersDialog({
         throw new Error(`Failed to load consumers: ${consumersError.message}`)
       }
 
+      // Get consumers who already have active assignments
+      const { data: existingAssignments } = await supabase
+        .from('meter_reader_assignments')
+        .select('consumer_id, status')
+        .in('status', ['assigned', 'ongoing'])
+
+      const assignedConsumerIds = new Set(
+        (existingAssignments || []).map(a => a.consumer_id)
+      )
+      const assignmentStatusMap = new Map(
+        (existingAssignments || []).map(a => [a.consumer_id, a.status])
+      )
+
       // Get the latest meter reading for each consumer to determine if they need a reading
       const consumersWithReadings = await Promise.all(
         (allConsumers || []).map(async (consumer: any) => {
           const { data: lastReading } = await supabase
             .from('bawasa_meter_readings')
-            .select('reading_date, present_reading')
+            .select('created_at, present_reading')
             .eq('consumer_id', consumer.id)
-            .order('reading_date', { ascending: false })
+            .order('created_at', { ascending: false })
             .limit(1)
             .maybeSingle()
 
-          const needsReading = !lastReading || shouldNeedNewReading(lastReading.reading_date)
+          const isAlreadyAssigned = assignedConsumerIds.has(consumer.id)
+          const needsReading = !lastReading || shouldNeedNewReading(lastReading.created_at)
           
           return {
             id: consumer.id,
@@ -107,13 +123,20 @@ export function AssignConsumersDialog({
             email: (consumer.accounts as any)?.email || 'No email',
             address: (consumer.accounts as any)?.full_address || 'No address',
             needsReading,
-            lastReadingDate: lastReading?.reading_date || null
+            lastReadingDate: lastReading?.created_at || null,
+            isAlreadyAssigned,
+            existingAssignmentStatus: assignmentStatusMap.get(consumer.id)
           }
         })
       )
 
-      setConsumers(consumersWithReadings)
-      setFilteredConsumers(consumersWithReadings)
+      // Filter out consumers who are already assigned
+      const availableConsumers = consumersWithReadings.filter(
+        c => !c.isAlreadyAssigned
+      )
+
+      setConsumers(availableConsumers)
+      setFilteredConsumers(availableConsumers)
     } catch (error) {
       console.error('Error loading consumers:', error)
       toast.error('Failed to load consumers')
@@ -127,6 +150,10 @@ export function AssignConsumersDialog({
     const lastDate = new Date(lastReadingDate)
     const daysDiff = Math.floor((today.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24))
     return daysDiff >= 25 // Consider needing new reading if it's been 25+ days
+  }
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString()
   }
 
   const handleSearch = (query: string) => {
