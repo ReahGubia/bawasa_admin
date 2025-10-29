@@ -278,11 +278,9 @@ export default function CashierManagementPage() {
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
                             <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                            <DropdownMenuItem>View Profile</DropdownMenuItem>
-                            <DropdownMenuItem>Edit Cashier</DropdownMenuItem>
-                            <DropdownMenuItem>View Transactions</DropdownMenuItem>
-                            <DropdownMenuItem>Assign Station</DropdownMenuItem>
-                            <DropdownMenuSeparator />
+                            
+                            
+                         
                             {cashier.is_active ? (
                               <DropdownMenuItem 
                                 onClick={() => handleStatusUpdate(cashier.id, false)}

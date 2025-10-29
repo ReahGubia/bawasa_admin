@@ -301,10 +301,7 @@ export default function MeterReaderManagementPage() {
                               <Droplets className="h-4 w-4 mr-2" />
                               Assign Consumers
                             </DropdownMenuItem>
-                            <DropdownMenuItem>View Profile</DropdownMenuItem>
-                            <DropdownMenuItem>Edit Reader</DropdownMenuItem>
-                            <DropdownMenuItem>View Readings</DropdownMenuItem>
-                            <DropdownMenuSeparator />
+                      
                             <DropdownMenuItem className="text-red-600">
                               Delete Reader
                             </DropdownMenuItem>

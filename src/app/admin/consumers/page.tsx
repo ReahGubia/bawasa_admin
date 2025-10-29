@@ -231,7 +231,7 @@ export default function ConsumerManagementPage() {
                     <TableHead>Consumer</TableHead>
                     <TableHead>Water Meter</TableHead>
                     <TableHead>Contact</TableHead>
-                    <TableHead>Payment Status</TableHead>
+                    <TableHead>Date Joined</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -260,7 +260,11 @@ export default function ConsumerManagementPage() {
                           </div>
                         </div>
                       </TableCell>
-                      <TableCell>{getStatusBadge(consumer.status)}</TableCell>
+                      <TableCell>
+                        <div className="text-sm">
+                          {formatDate(consumer.created_at)}
+                        </div>
+                      </TableCell>
                       <TableCell className="text-right">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
@@ -274,24 +278,8 @@ export default function ConsumerManagementPage() {
                             <DropdownMenuItem onClick={() => handleViewDetails(consumer)}>
                               View Details
                             </DropdownMenuItem>
-                            <DropdownMenuItem>Edit Billing</DropdownMenuItem>
-                            <DropdownMenuItem>View Meter Readings</DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            {consumer.latest_billing?.payment_status === 'unpaid' ? (
-                              <DropdownMenuItem 
-                                onClick={() => handleStatusUpdate(consumer.id, 'paid')}
-                                className="text-green-600"
-                              >
-                                Mark as Paid
-                              </DropdownMenuItem>
-                            ) : (
-                              <DropdownMenuItem 
-                                onClick={() => handleStatusUpdate(consumer.id, 'unpaid')}
-                                className="text-orange-600"
-                              >
-                                Mark as Unpaid
-                              </DropdownMenuItem>
-                            )}
+                          
+                            
                             <DropdownMenuSeparator />
                             <DropdownMenuItem className="text-red-600">
                               Delete Record
