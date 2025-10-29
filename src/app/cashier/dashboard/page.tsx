@@ -18,8 +18,8 @@ import { CashierLayout } from "@/components/cashier-sidebar"
 import { supabase } from "@/lib/supabase"
 
 interface DashboardStats {
-  todayTransactions: number
-  todayRevenue: number
+  allTransactions: number
+  allRevenue: number
   pendingBills: number
   completedBills: number
 }
@@ -35,8 +35,8 @@ interface RecentTransaction {
 
 export default function CashierDashboard() {
   const [stats, setStats] = useState<DashboardStats>({
-    todayTransactions: 0,
-    todayRevenue: 0,
+    allTransactions: 0,
+    allRevenue: 0,
     pendingBills: 0,
     completedBills: 0
   })
@@ -52,10 +52,8 @@ export default function CashierDashboard() {
     try {
       setLoading(true)
       setError(null)
-
-      const today = new Date().toISOString().split('T')[0]
       
-      // Fetch today's transactions
+      // Fetch all transactions (not filtered by date)
       const { data: transactions, error: transactionsError } = await supabase
         .from('bawasa_billings')
         .select(`
@@ -70,8 +68,8 @@ export default function CashierDashboard() {
             )
           )
         `)
-        .gte('payment_date', today)
         .not('payment_date', 'is', null)
+        .order('payment_date', { ascending: false })
 
       if (transactionsError) {
         console.error('Error fetching transactions:', transactionsError)
@@ -90,14 +88,14 @@ export default function CashierDashboard() {
       }
 
       // Calculate stats
-      const todayTransactions = transactions?.length || 0
-      const todayRevenue = transactions?.reduce((sum, t) => sum + (t.amount_paid || 0), 0) || 0
+      const allTransactions = transactions?.length || 0
+      const allRevenue = transactions?.reduce((sum, t) => sum + (t.amount_paid || 0), 0) || 0
       const pendingBills = pendingBillsCount || 0
       const completedBills = transactions?.filter(t => t.payment_status === 'paid').length || 0
 
       setStats({
-        todayTransactions,
-        todayRevenue,
+        allTransactions,
+        allRevenue,
         pendingBills,
         completedBills
       })
@@ -195,26 +193,26 @@ export default function CashierDashboard() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Today&apos;s Transactions</CardTitle>
+              <CardTitle className="text-sm font-medium">All Transactions</CardTitle>
               <Receipt className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{stats.todayTransactions}</div>
+              <div className="text-2xl font-bold">{stats.allTransactions}</div>
               <p className="text-xs text-muted-foreground">
-                Payments processed today
+                Total payments processed
               </p>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Today&apos;s Revenue</CardTitle>
+              <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
               <DollarSign className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{formatCurrency(stats.todayRevenue)}</div>
+              <div className="text-2xl font-bold">{formatCurrency(stats.allRevenue)}</div>
               <p className="text-xs text-muted-foreground">
-                Total collected today
+                Total collected amount
               </p>
             </CardContent>
           </Card>
@@ -240,7 +238,7 @@ export default function CashierDashboard() {
             <CardContent>
               <div className="text-2xl font-bold">{stats.completedBills}</div>
               <p className="text-xs text-muted-foreground">
-                Bills paid today
+                Total bills paid
               </p>
             </CardContent>
           </Card>
@@ -251,15 +249,15 @@ export default function CashierDashboard() {
           <CardHeader>
             <CardTitle>Recent Transactions</CardTitle>
             <CardDescription>
-              Latest payments processed today
+              Latest payments processed
             </CardDescription>
           </CardHeader>
           <CardContent>
             {recentTransactions.length === 0 ? (
               <div className="text-center py-8">
                 <CreditCard className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                <h3 className="text-lg font-medium text-gray-900 mb-2">No transactions today</h3>
-                <p className="text-gray-500">No payments have been processed yet today.</p>
+                <h3 className="text-lg font-medium text-gray-900 mb-2">No transactions found</h3>
+                <p className="text-gray-500">No payments have been processed yet.</p>
               </div>
             ) : (
               <div className="space-y-4">

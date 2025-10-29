@@ -11,6 +11,7 @@ import {
   Activity,
   UserCheck,
   Receipt,
+  History,
 } from "lucide-react"
 
 import {
@@ -57,6 +58,11 @@ const items = [
     title: "Billing",
     url: "/admin/billing",
     icon: CreditCard,
+  },
+  {
+    title: "Transactions",
+    url: "/admin/transactions",
+    icon: History,
   },
   {
     title: "Issues & Reports",

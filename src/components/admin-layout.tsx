@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
 import { AdminSidebar } from "@/components/admin-sidebar"
-import { Bell, Search, User } from "lucide-react"
+import { Search, User } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -107,12 +107,6 @@ export function AdminLayout({ children }: AdminLayoutProps) {
             
             {/* Right side actions */}
             <div className="flex items-center gap-2">
-              {/* Notifications */}
-              <Button variant="ghost" size="icon">
-                <Bell className="h-4 w-4" />
-                <span className="sr-only">Notifications</span>
-              </Button>
-              
               {/* User Menu */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>

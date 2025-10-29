@@ -20,11 +20,13 @@ export async function GET() {
     const startDate = new Date(currentYear, currentMonth - 11, 1)
     const endDate = new Date(currentYear, currentMonth + 1, 0)
     
-    // Fetch all relevant bills in a single query
+    // Fetch all relevant bills in a single query - bills created in last 12 months
     const { data: allBills, error: billsError } = await supabase
       .from('bawasa_billings')
-      .select('id, amount_paid, payment_date, payment_status, billing_month')
-      .or('payment_date.gte.' + startDate.toISOString().split('T')[0] + ',billing_month.not.is.null')
+      .select('id, amount_paid, payment_date, payment_status, billing_month, created_at')
+      .gte('created_at', startDate.toISOString())
+      .lte('created_at', endDate.toISOString())
+      .not('created_at', 'is', null)
     
     if (billsError) {
       console.error('❌ Error fetching bills:', billsError)
@@ -46,19 +48,14 @@ export async function GET() {
     
     // Process all bills and aggregate by month
     allBills?.forEach(bill => {
-      // Count bills by billing_month
-      if (bill.billing_month) {
-        const dateParts = bill.billing_month.split('-')
-        if (dateParts.length >= 2) {
-          const year = parseInt(dateParts[0])
-          const month = parseInt(dateParts[1])
-          const date = new Date(year, month - 1, 1)
-          const monthName = date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
-          
-          if (monthlyMap.has(monthName)) {
-            const current = monthlyMap.get(monthName)!
-            current.billsCount++
-          }
+      // Count bills by created_at (when bill was issued)
+      if (bill.created_at) {
+        const createdDate = new Date(bill.created_at)
+        const monthName = createdDate.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+        
+        if (monthlyMap.has(monthName)) {
+          const current = monthlyMap.get(monthName)!
+          current.billsCount++
         }
       }
       

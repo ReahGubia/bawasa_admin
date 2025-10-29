@@ -39,6 +39,9 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { BillingService, BillingWithDetails } from "@/lib/billing-service"
 import { useEffect, useState } from "react"
+import { ViewBillingDetailsDialog } from "@/components/view-billing-details-dialog"
+import { PrintableBill } from "@/components/printable-bill"
+import { Printer, Eye } from "lucide-react"
 
 export default function BillingManagementPage() {
   const [billings, setBillings] = useState<BillingWithDetails[]>([])
@@ -46,7 +49,10 @@ export default function BillingManagementPage() {
   const [error, setError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
   const [filteredBillings, setFilteredBillings] = useState<BillingWithDetails[]>([])
-  const [statusFilter, setStatusFilter] = useState<string>("all")
+  const [statusFilter, setStatusFilter] = useState<string>("unpaid")
+  const [selectedBilling, setSelectedBilling] = useState<BillingWithDetails | null>(null)
+  const [isDetailsDialogOpen, setIsDetailsDialogOpen] = useState(false)
+  const [billingToPrint, setBillingToPrint] = useState<BillingWithDetails | null>(null)
 
   // Fetch billings from database
   const fetchBillings = async () => {
@@ -67,8 +73,10 @@ export default function BillingManagementPage() {
       
       if (data) {
         console.log('📝 Setting billings...')
-        setBillings(data)
-        setFilteredBillings(data)
+        // Filter to show only unpaid bills
+        const unpaidBills = data.filter(billing => billing.payment_status === 'unpaid')
+        setBillings(unpaidBills)
+        setFilteredBillings(unpaidBills)
       } else {
         console.log('📭 No data returned from Supabase')
         setBillings([])
@@ -116,8 +124,16 @@ export default function BillingManagementPage() {
       setError(null)
       
       if (status === 'all') {
-        setFilteredBillings(billings)
+        // Fetch all billings
+        const { data, error } = await BillingService.getAllBillings()
+        if (error) {
+          setError(error.message || 'Failed to fetch billings')
+          return
+        }
+        setBillings(data || [])
+        setFilteredBillings(data || [])
       } else {
+        // Fetch specific status
         const { data, error } = await BillingService.getBillingsByStatus(status as 'unpaid' | 'partial' | 'paid' | 'overdue')
         
         if (error) {
@@ -125,6 +141,7 @@ export default function BillingManagementPage() {
           return
         }
         
+        setBillings(data || [])
         setFilteredBillings(data || [])
       }
     } catch (err) {
@@ -149,6 +166,32 @@ export default function BillingManagementPage() {
       console.error('Error updating billing status:', err)
     }
   }
+
+  const handleViewDetails = (billing: BillingWithDetails) => {
+    setSelectedBilling(billing)
+    setIsDetailsDialogOpen(true)
+  }
+
+  const handlePrintBill = (billing: BillingWithDetails) => {
+    setBillingToPrint(billing)
+    // Trigger print after a short delay to ensure state update
+    setTimeout(() => {
+      window.print()
+    }, 100)
+  }
+
+  // Handle print cleanup
+  useEffect(() => {
+    const handleAfterPrint = () => {
+      setBillingToPrint(null)
+    }
+    
+    window.addEventListener('afterprint', handleAfterPrint)
+    
+    return () => {
+      window.removeEventListener('afterprint', handleAfterPrint)
+    }
+  }, [])
 
   // Format date for display
   const formatDate = (dateString: string) => {
@@ -188,7 +231,7 @@ export default function BillingManagementPage() {
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Billing Management</h1>
             <p className="text-muted-foreground">
-              Manage bills, payments, and billing reports
+              Manage unpaid bills and billing reports
             </p>
           </div>
           <div className="flex space-x-2">
@@ -217,7 +260,7 @@ export default function BillingManagementPage() {
           <CardHeader>
             <CardTitle>Bills Overview</CardTitle>
             <CardDescription>
-              Manage all bills generated from meter readings
+              Manage unpaid bills generated from meter readings
             </CardDescription>
             <div className="flex items-center space-x-2 pt-4">
               <div className="relative flex-1 max-w-sm">
@@ -320,15 +363,21 @@ export default function BillingManagementPage() {
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
                             <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                            <DropdownMenuItem>View Bill Details</DropdownMenuItem>
-                            <DropdownMenuItem>Download PDF</DropdownMenuItem>
-                            <DropdownMenuItem>Send Reminder</DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleViewDetails(billing)}>
+                              <Eye className="h-4 w-4 mr-2" />
+                              View Details
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handlePrintBill(billing)}>
+                              <Printer className="h-4 w-4 mr-2" />
+                              Print Receipt
+                            </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             {billing.payment_status === 'unpaid' ? (
                               <DropdownMenuItem 
                                 onClick={() => handleStatusUpdate(billing.id, 'paid')}
                                 className="text-green-600"
                               >
+                                <CheckCircle className="h-4 w-4 mr-2" />
                                 Mark as Paid
                               </DropdownMenuItem>
                             ) : (
@@ -336,14 +385,10 @@ export default function BillingManagementPage() {
                                 onClick={() => handleStatusUpdate(billing.id, 'unpaid')}
                                 className="text-orange-600"
                               >
+                                <Clock className="h-4 w-4 mr-2" />
                                 Mark as Unpaid
                               </DropdownMenuItem>
                             )}
-                            <DropdownMenuItem>Generate Receipt</DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem className="text-red-600">
-                              Cancel Bill
-                            </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>
@@ -355,6 +400,46 @@ export default function BillingManagementPage() {
           </CardContent>
         </Card>
 
+        {/* Billing Details Dialog */}
+        <ViewBillingDetailsDialog
+          billing={selectedBilling}
+          open={isDetailsDialogOpen}
+          onOpenChange={setIsDetailsDialogOpen}
+        />
+
+        {/* Printable Bill - Hidden until print */}
+        {billingToPrint && (
+          <div className="hidden-print">
+            <PrintableBill billing={billingToPrint} />
+          </div>
+        )}
+
+        {/* Print styles */}
+        <style dangerouslySetInnerHTML={{ __html: `
+          @media print {
+            body * {
+              visibility: hidden;
+            }
+            .print-container,
+            .print-container * {
+              visibility: visible;
+            }
+            .print-container {
+              position: absolute;
+              left: 0;
+              top: 0;
+              width: 100%;
+              padding: 20px;
+            }
+          }
+          @media screen {
+            .hidden-print {
+              position: absolute;
+              left: -9999px;
+              top: -9999px;
+            }
+          }
+        `}} />
         
       </div>
     </AdminLayout>
