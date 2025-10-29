@@ -16,7 +16,6 @@ import {
 import { 
   CreditCard, 
   Search, 
-  Filter, 
   MoreHorizontal,
   CheckCircle,
   XCircle,
@@ -109,8 +108,11 @@ export default function CashierBillingPage() {
       )
     }
 
-    // Filter by status
-    if (statusFilter !== "all") {
+    // Filter by status - exclude paid bills by default
+    if (statusFilter === "all") {
+      // Show all except paid bills
+      filtered = filtered.filter(billing => billing.payment_status !== 'paid')
+    } else if (statusFilter !== "all") {
       filtered = filtered.filter(billing => billing.payment_status === statusFilter)
     }
 
@@ -267,21 +269,6 @@ export default function CashierBillingPage() {
                   onChange={(e) => handleSearch(e.target.value)}
                 />
               </div>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline">
-                    <Filter className="h-4 w-4 mr-2" />
-                    Status: {statusFilter === 'all' ? 'All' : statusFilter}
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent>
-                  <DropdownMenuItem onClick={() => setStatusFilter('all')}>All</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setStatusFilter('unpaid')}>Unpaid</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setStatusFilter('paid')}>Paid</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setStatusFilter('partial')}>Partial</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setStatusFilter('overdue')}>Overdue</DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
             </div>
           </CardHeader>
           <CardContent>
@@ -313,16 +300,7 @@ export default function CashierBillingPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredBillings.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={8} className="text-center py-8">
-                        <div className="text-muted-foreground">
-                          {loading ? 'Loading bills...' : 'No bills found'}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    filteredBillings.map((billing) => (
+                  {filteredBillings.map((billing) => (
                       <TableRow key={billing.id}>
                         <TableCell className="font-medium">
                           <div className="space-y-1">
@@ -364,7 +342,7 @@ export default function CashierBillingPage() {
                               </DropdownMenuItem>
                               <DropdownMenuItem onClick={() => handlePrintBill(billing)}>
                                 <Printer className="h-4 w-4 mr-2" />
-                                Print Bill
+                                Print Receipt
                               </DropdownMenuItem>
                               <DropdownMenuSeparator />
                               {billing.payment_status === 'unpaid' ? (
@@ -388,8 +366,7 @@ export default function CashierBillingPage() {
                           </DropdownMenu>
                         </TableCell>
                       </TableRow>
-                    ))
-                  )}
+                  ))}
                 </TableBody>
               </Table>
             )}

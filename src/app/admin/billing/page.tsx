@@ -196,14 +196,7 @@ export default function BillingManagementPage() {
               <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
               Refresh
             </Button>
-            <Button variant="outline">
-              <Download className="h-4 w-4 mr-2" />
-              Export Bills
-            </Button>
-            <Button>
-              <Send className="h-4 w-4 mr-2" />
-              Send Reminders
-            </Button>
+          
           </div>
         </div>
 

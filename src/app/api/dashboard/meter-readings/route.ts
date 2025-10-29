@@ -16,7 +16,6 @@ export async function GET() {
       .from('bawasa_meter_readings')
       .select(`
         id,
-        reading_date,
         present_reading,
         previous_reading,
         consumption_cubic_meters,
@@ -53,8 +52,8 @@ export async function GET() {
         id: reading.id,
         user: account?.full_name || 'Unknown User',
         value: reading.present_reading?.toString() || '0',
-        status: billing?.payment_status || 'unknown',
-        date: new Date(reading.reading_date).toLocaleDateString()
+        status: billing ? (billing.payment_status || 'billed') : 'submitted',
+        date: new Date(reading.created_at).toLocaleDateString()
       }
     }) || []
 

@@ -231,7 +231,10 @@ export default function AdminDashboardPage() {
                         </div>
                       </div>
                       <div className="flex items-center space-x-2">
-                        <Badge variant={reading.status === "confirmed" ? "default" : "secondary"}>
+                        <Badge variant={
+                          reading.status === "confirmed" || reading.status === "submitted" ? "default" : 
+                          reading.status === "paid" ? "default" : "secondary"
+                        }>
                           {reading.status}
                         </Badge>
                         <span className="text-sm text-muted-foreground">{reading.date}</span>

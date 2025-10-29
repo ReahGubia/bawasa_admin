@@ -16,17 +16,13 @@ import {
 import { 
   History, 
   Search, 
-  Filter, 
   MoreHorizontal,
   CheckCircle,
-  XCircle,
-  Clock,
   AlertCircle,
   RefreshCw,
   Loader2,
-  DollarSign,
-  Calendar,
-  Download
+  Printer,
+  Eye
 } from "lucide-react"
 import {
   DropdownMenu,
@@ -38,32 +34,19 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { CashierLayout } from "@/components/cashier-sidebar"
 import { supabase } from "@/lib/supabase"
-
-interface TransactionRecord {
-  id: string
-  consumer_id: string
-  billing_month: string
-  total_amount_due: number
-  amount_paid: number
-  payment_date: string
-  payment_status: string
-  consumer?: {
-    water_meter_no?: string
-    accounts?: {
-      full_name?: string
-      email?: string
-    }
-  }
-}
+import { ViewBillingDetailsDialog } from "@/components/view-billing-details-dialog"
+import { BillingWithDetails } from "@/lib/billing-service"
+import { PrintableBill } from "@/components/printable-bill"
 
 export default function CashierTransactionsPage() {
-  const [transactions, setTransactions] = useState<TransactionRecord[]>([])
-  const [filteredTransactions, setFilteredTransactions] = useState<TransactionRecord[]>([])
+  const [transactions, setTransactions] = useState<BillingWithDetails[]>([])
+  const [filteredTransactions, setFilteredTransactions] = useState<BillingWithDetails[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
-  const [statusFilter, setStatusFilter] = useState<string>("all")
-  const [dateFilter, setDateFilter] = useState<string>("all")
+  const [selectedBilling, setSelectedBilling] = useState<BillingWithDetails | null>(null)
+  const [isDetailsDialogOpen, setIsDetailsDialogOpen] = useState(false)
+  const [billingToPrint, setBillingToPrint] = useState<BillingWithDetails | null>(null)
 
   useEffect(() => {
     fetchTransactions()
@@ -71,7 +54,7 @@ export default function CashierTransactionsPage() {
 
   useEffect(() => {
     handleSearch(searchQuery)
-  }, [transactions, searchQuery, statusFilter, dateFilter])
+  }, [transactions, searchQuery])
 
   const fetchTransactions = async () => {
     try {
@@ -83,11 +66,13 @@ export default function CashierTransactionsPage() {
         .select(`
           *,
           consumers!consumer_id (
-            water_meter_no,
+            *,
             accounts!consumer_id (
-              full_name,
-              email
+              *
             )
+          ),
+          bawasa_meter_readings!meter_reading_id (
+            *
           )
         `)
         .not('payment_date', 'is', null)
@@ -99,7 +84,24 @@ export default function CashierTransactionsPage() {
         return
       }
 
-      setTransactions(data || [])
+      // Transform the data to match our BillingWithDetails interface
+      const transformedTransactions = (data || []).map((billing: any) => {
+        const consumer = billing.consumers
+        const account = consumer?.accounts
+        const meterReading = billing.bawasa_meter_readings
+
+        return {
+          ...billing,
+          consumer: consumer ? {
+            ...consumer,
+            accounts: account || null
+          } : null,
+          account: account || null,
+          meter_reading: meterReading || null
+        }
+      })
+
+      setTransactions(transformedTransactions)
     } catch (err) {
       console.error('Transaction fetch error:', err)
       setError('Failed to load transaction data')
@@ -122,38 +124,6 @@ export default function CashierTransactionsPage() {
       )
     }
 
-    // Filter by status
-    if (statusFilter !== "all") {
-      filtered = filtered.filter(transaction => transaction.payment_status === statusFilter)
-    }
-
-    // Filter by date
-    if (dateFilter !== "all") {
-      const today = new Date()
-      const filterDate = new Date()
-      
-      switch (dateFilter) {
-        case 'today':
-          filterDate.setHours(0, 0, 0, 0)
-          filtered = filtered.filter(transaction => 
-            new Date(transaction.payment_date) >= filterDate
-          )
-          break
-        case 'week':
-          filterDate.setDate(today.getDate() - 7)
-          filtered = filtered.filter(transaction => 
-            new Date(transaction.payment_date) >= filterDate
-          )
-          break
-        case 'month':
-          filterDate.setMonth(today.getMonth() - 1)
-          filtered = filtered.filter(transaction => 
-            new Date(transaction.payment_date) >= filterDate
-          )
-          break
-      }
-    }
-
     setFilteredTransactions(filtered)
   }
 
@@ -164,7 +134,8 @@ export default function CashierTransactionsPage() {
     }).format(amount)
   }
 
-  const formatDateTime = (dateString: string) => {
+  const formatDateTime = (dateString: string | null) => {
+    if (!dateString) return 'N/A'
     return new Date(dateString).toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'short',
@@ -185,13 +156,31 @@ export default function CashierTransactionsPage() {
     }
   }
 
-  const getTotalRevenue = () => {
-    return filteredTransactions.reduce((sum, transaction) => sum + transaction.amount_paid, 0)
+  const handleViewDetails = (transaction: BillingWithDetails) => {
+    setSelectedBilling(transaction)
+    setIsDetailsDialogOpen(true)
   }
 
-  const getTransactionCount = () => {
-    return filteredTransactions.length
+  const handlePrintReceipt = (transaction: BillingWithDetails) => {
+    setBillingToPrint(transaction)
+    // Trigger print after a short delay to ensure state update
+    setTimeout(() => {
+      window.print()
+    }, 100)
   }
+
+  // Handle print cleanup
+  useEffect(() => {
+    const handleAfterPrint = () => {
+      setBillingToPrint(null)
+    }
+    
+    window.addEventListener('afterprint', handleAfterPrint)
+    
+    return () => {
+      window.removeEventListener('afterprint', handleAfterPrint)
+    }
+  }, [])
 
   return (
     <CashierLayout>
@@ -207,10 +196,7 @@ export default function CashierTransactionsPage() {
               <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
               Refresh
             </Button>
-            <Button variant="outline">
-              <Download className="h-4 w-4 mr-2" />
-              Export
-            </Button>
+           
           </div>
         </div>
 
@@ -226,56 +212,12 @@ export default function CashierTransactionsPage() {
           </Card>
         )}
 
-        {/* Summary Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Transactions</CardTitle>
-              <History className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{getTransactionCount()}</div>
-              <p className="text-xs text-muted-foreground">
-                Based on current filters
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
-              <DollarSign className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{formatCurrency(getTotalRevenue())}</div>
-              <p className="text-xs text-muted-foreground">
-                From filtered transactions
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Average Payment</CardTitle>
-              <CheckCircle className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {getTransactionCount() > 0 ? formatCurrency(getTotalRevenue() / getTransactionCount()) : formatCurrency(0)}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Per transaction
-              </p>
-            </CardContent>
-          </Card>
-        </div>
-
         {/* Filters */}
         <Card>
           <CardHeader>
             <CardTitle>Transactions</CardTitle>
             <CardDescription>
-              Search and filter payment transactions
+              Search payment transactions
             </CardDescription>
             <div className="flex items-center space-x-2 pt-4">
               <div className="relative flex-1 max-w-sm">
@@ -287,33 +229,6 @@ export default function CashierTransactionsPage() {
                   onChange={(e) => handleSearch(e.target.value)}
                 />
               </div>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline">
-                    <Filter className="h-4 w-4 mr-2" />
-                    Status: {statusFilter === 'all' ? 'All' : statusFilter}
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent>
-                  <DropdownMenuItem onClick={() => setStatusFilter('all')}>All</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setStatusFilter('paid')}>Paid</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setStatusFilter('partial')}>Partial</DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline">
-                    <Calendar className="h-4 w-4 mr-2" />
-                    Date: {dateFilter === 'all' ? 'All' : dateFilter}
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent>
-                  <DropdownMenuItem onClick={() => setDateFilter('all')}>All Time</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setDateFilter('today')}>Today</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setDateFilter('week')}>This Week</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setDateFilter('month')}>This Month</DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
             </div>
           </CardHeader>
           <CardContent>
@@ -381,10 +296,14 @@ export default function CashierTransactionsPage() {
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
                             <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                            <DropdownMenuItem>View Details</DropdownMenuItem>
-                            <DropdownMenuItem>Print Receipt</DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem>Refund Transaction</DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleViewDetails(transaction)}>
+                              <Eye className="h-4 w-4 mr-2" />
+                              View Details
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handlePrintReceipt(transaction)}>
+                              <Printer className="h-4 w-4 mr-2" />
+                              Print Receipt
+                            </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>
@@ -395,6 +314,47 @@ export default function CashierTransactionsPage() {
             )}
           </CardContent>
         </Card>
+
+        {/* Billing Details Dialog */}
+        <ViewBillingDetailsDialog
+          billing={selectedBilling}
+          open={isDetailsDialogOpen}
+          onOpenChange={setIsDetailsDialogOpen}
+        />
+
+        {/* Printable Bill - Hidden until print */}
+        {billingToPrint && (
+          <div className="hidden-print">
+            <PrintableBill billing={billingToPrint} />
+          </div>
+        )}
+
+        {/* Print styles */}
+        <style dangerouslySetInnerHTML={{ __html: `
+          @media print {
+            body * {
+              visibility: hidden;
+            }
+            .print-container,
+            .print-container * {
+              visibility: visible;
+            }
+            .print-container {
+              position: absolute;
+              left: 0;
+              top: 0;
+              width: 100%;
+              padding: 20px;
+            }
+          }
+          @media screen {
+            .hidden-print {
+              position: absolute;
+              left: -9999px;
+              top: -9999px;
+            }
+          }
+        `}} />
       </div>
     </CashierLayout>
   )

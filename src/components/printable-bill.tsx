@@ -106,7 +106,7 @@ export function PrintableBill({ billing }: PrintableBillProps) {
         <div className="flex justify-between items-start">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">BAWASA</h1>
-            <p className="text-xs text-gray-600">Bacolod City Water District</p>
+            <p className="text-xs text-gray-600">Banadero City Water District</p>
           </div>
           <div className="text-right">
             <p className="text-xs text-gray-600">Water Bill</p>

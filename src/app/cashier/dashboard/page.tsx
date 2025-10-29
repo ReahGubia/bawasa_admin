@@ -6,19 +6,15 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { 
   CreditCard, 
-  Users, 
   DollarSign, 
-  TrendingUp, 
   Clock, 
   CheckCircle,
   AlertCircle,
   Receipt,
-  Calendar,
   RefreshCw,
   Loader2
 } from "lucide-react"
 import { CashierLayout } from "@/components/cashier-sidebar"
-import { PaymentProcessingDialog } from "@/components/payment-processing-dialog"
 import { supabase } from "@/lib/supabase"
 
 interface DashboardStats {
@@ -107,7 +103,7 @@ export default function CashierDashboard() {
       })
 
       // Format recent transactions
-      const formattedTransactions = transactions?.slice(0, 5).map(t => ({
+      const formattedTransactions = transactions?.slice(0, 5).map((t: any) => ({
         id: t.id,
         consumer_name: t.consumers?.accounts?.full_name || 'Unknown',
         water_meter_no: t.consumers?.water_meter_no || 'N/A',
@@ -292,28 +288,6 @@ export default function CashierDashboard() {
           </CardContent>
         </Card>
 
-        {/* Quick Actions */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Quick Actions</CardTitle>
-            <CardDescription>
-              Common tasks and shortcuts
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <PaymentProcessingDialog onPaymentProcessed={fetchDashboardData} />
-              <Button variant="outline" className="h-20 flex flex-col items-center justify-center space-y-2">
-                <Users className="h-6 w-6" />
-                <span>View Bills</span>
-              </Button>
-              <Button variant="outline" className="h-20 flex flex-col items-center justify-center space-y-2">
-                <Calendar className="h-6 w-6" />
-                <span>Daily Report</span>
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
       </div>
     </CashierLayout>
   )
