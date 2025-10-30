@@ -55,6 +55,7 @@ export default function MeterReaderManagementPage() {
   const [viewAssignedDialogOpen, setViewAssignedDialogOpen] = useState(false)
   const [selectedMeterReaderForViewing, setSelectedMeterReaderForViewing] = useState<{id: number, name: string} | null>(null)
   const [assignmentCounts, setAssignmentCounts] = useState<Record<number, number>>({})
+  const [completedCounts, setCompletedCounts] = useState<Record<number, number>>({})
 
   // Fetch meter readers from Supabase
   const fetchMeterReaders = async () => {
@@ -78,8 +79,10 @@ export default function MeterReaderManagementPage() {
         setMeterReaders(data)
         setFilteredMeterReaders(data)
         
-        // Fetch assignment counts for each meter reader
-        fetchAssignmentCounts(data.map(reader => reader.meter_reader_id).filter(Boolean))
+        // Fetch assignment counts and completed readings counts for each meter reader
+        const meterReaderIds = data.map(reader => reader.meter_reader_id).filter(Boolean)
+        fetchAssignmentCounts(meterReaderIds)
+        fetchCompletedCounts(meterReaderIds)
       } else {
         console.log('📭 No data returned from Supabase')
         setMeterReaders([])
@@ -106,6 +109,7 @@ export default function MeterReaderManagementPage() {
           .from('meter_reader_assignments')
           .select('*', { count: 'exact', head: true })
           .eq('meter_reader_id', meterReaderId)
+          .in('status', ['assigned', 'ongoing'])
         
         if (!error) {
           counts[meterReaderId] = count || 0
@@ -118,6 +122,35 @@ export default function MeterReaderManagementPage() {
       setAssignmentCounts(counts)
     } catch (err) {
       console.error('Error fetching assignment counts:', err)
+    }
+  }
+
+  // Fetch completed readings counts for meter readers
+  const fetchCompletedCounts = async (meterReaderIds: (number | null)[]) => {
+    try {
+      const counts: Record<number, number> = {}
+      
+      for (const meterReaderId of meterReaderIds) {
+        if (!meterReaderId) continue
+        
+        // Get count of completed assignments (which indicates completed readings)
+        const { count, error } = await supabase
+          .from('meter_reader_assignments')
+          .select('*', { count: 'exact', head: true })
+          .eq('meter_reader_id', meterReaderId)
+          .eq('status', 'completed')
+        
+        if (!error) {
+          counts[meterReaderId] = count || 0
+        } else if (error.code === '42P01') {
+          // Table doesn't exist yet
+          counts[meterReaderId] = 0
+        }
+      }
+      
+      setCompletedCounts(counts)
+    } catch (err) {
+      console.error('Error fetching completed counts:', err)
     }
   }
 
@@ -243,6 +276,7 @@ export default function MeterReaderManagementPage() {
                     <TableHead>Email</TableHead>
                     <TableHead>Mobile Number</TableHead>
                     <TableHead>Assigned</TableHead>
+                    <TableHead>Completed</TableHead>
                     <TableHead>Created</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
@@ -269,6 +303,14 @@ export default function MeterReaderManagementPage() {
                           <Badge variant="secondary" className="bg-blue-50 text-blue-700 border-blue-200">
                             <Users className="h-3 w-3 mr-1" />
                             {assignmentCounts[reader.meter_reader_id] || 0} consumer{assignmentCounts[reader.meter_reader_id] !== 1 ? 's' : ''}
+                          </Badge>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center space-x-2">
+                          <Badge variant="default" className="bg-green-50 text-green-700 border-green-200">
+                            <CheckCircle className="h-3 w-3 mr-1" />
+                            {completedCounts[reader.meter_reader_id] || 0} reading{completedCounts[reader.meter_reader_id] !== 1 ? 's' : ''}
                           </Badge>
                         </div>
                       </TableCell>

@@ -33,6 +33,7 @@ interface Consumer {
   needsReading: boolean
   lastReadingDate: string | null
   isAlreadyAssigned: boolean
+  hasCompletedReading: boolean
   existingAssignmentStatus?: string
 }
 
@@ -89,7 +90,7 @@ export function AssignConsumersDialog({
         throw new Error(`Failed to load consumers: ${consumersError.message}`)
       }
 
-      // Get consumers who already have active assignments
+      // Get consumers who already have active assignments (assigned or ongoing)
       const { data: existingAssignments } = await supabase
         .from('meter_reader_assignments')
         .select('consumer_id, status')
@@ -100,6 +101,21 @@ export function AssignConsumersDialog({
       )
       const assignmentStatusMap = new Map(
         (existingAssignments || []).map(a => [a.consumer_id, a.status])
+      )
+
+      // Get consumers who have completed assignments for the current month
+      const currentMonthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1)
+      const currentMonthEnd = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0, 23, 59, 59)
+
+      const { data: completedAssignments } = await supabase
+        .from('meter_reader_assignments')
+        .select('consumer_id')
+        .eq('status', 'completed')
+        .gte('updated_at', currentMonthStart.toISOString())
+        .lte('updated_at', currentMonthEnd.toISOString())
+
+      const completedConsumerIds = new Set(
+        (completedAssignments || []).map(a => a.consumer_id)
       )
 
       // Get the latest meter reading for each consumer to determine if they need a reading
@@ -113,7 +129,17 @@ export function AssignConsumersDialog({
             .limit(1)
             .maybeSingle()
 
+          // Check if consumer has a meter reading for the current month
+          const { data: currentMonthReading } = await supabase
+            .from('bawasa_meter_readings')
+            .select('id')
+            .eq('consumer_id', consumer.id)
+            .gte('created_at', currentMonthStart.toISOString())
+            .lte('created_at', currentMonthEnd.toISOString())
+            .maybeSingle()
+
           const isAlreadyAssigned = assignedConsumerIds.has(consumer.id)
+          const hasCompletedReading = completedConsumerIds.has(consumer.id) || currentMonthReading != null
           const needsReading = !lastReading || shouldNeedNewReading(lastReading.created_at)
           
           return {
@@ -125,14 +151,15 @@ export function AssignConsumersDialog({
             needsReading,
             lastReadingDate: lastReading?.created_at || null,
             isAlreadyAssigned,
+            hasCompletedReading,
             existingAssignmentStatus: assignmentStatusMap.get(consumer.id)
           }
         })
       )
 
-      // Filter out consumers who are already assigned
+      // Filter out consumers who are already assigned OR have completed readings this month
       const availableConsumers = consumersWithReadings.filter(
-        c => !c.isAlreadyAssigned
+        c => !c.isAlreadyAssigned && !c.hasCompletedReading
       )
 
       setConsumers(availableConsumers)
