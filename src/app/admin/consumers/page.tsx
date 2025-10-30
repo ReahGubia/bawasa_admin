@@ -280,10 +280,7 @@ export default function ConsumerManagementPage() {
                             </DropdownMenuItem>
                           
                             
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem className="text-red-600">
-                              Delete Record
-                            </DropdownMenuItem>
+                           
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>

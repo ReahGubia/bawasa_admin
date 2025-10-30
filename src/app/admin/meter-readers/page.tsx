@@ -344,9 +344,6 @@ export default function MeterReaderManagementPage() {
                               Assign Consumers
                             </DropdownMenuItem>
                       
-                            <DropdownMenuItem className="text-red-600">
-                              Delete Reader
-                            </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>

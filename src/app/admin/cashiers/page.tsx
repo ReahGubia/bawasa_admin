@@ -296,10 +296,7 @@ export default function CashierManagementPage() {
                                 Activate Access
                               </DropdownMenuItem>
                             )}
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem className="text-red-600">
-                              Delete Account
-                            </DropdownMenuItem>
+                            
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>
