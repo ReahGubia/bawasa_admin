@@ -6,9 +6,7 @@ import {
   LayoutDashboard, 
   Receipt, 
   History, 
-  User, 
   LogOut,
-  MapPin
 } from "lucide-react"
 import {
   Sidebar,
@@ -24,7 +22,6 @@ import {
   SidebarProvider,
   SidebarTrigger,
 } from "@/components/ui/sidebar"
-import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { CashierWithStatus } from "@/lib/cashier-service"
 import { CashierAuthService } from "@/lib/cashier-auth-service"
@@ -123,27 +120,19 @@ export function CashierSidebar({ cashier, onLogout }: CashierSidebarProps) {
                   </div>
                 </div>
               </SidebarMenuItem>
-              
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  onClick={() => router.push("/cashier/profile")}
-                  tooltip="Profile"
-                >
-                  <User className="h-4 w-4" />
-                  <span>Profile</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
 
+              {/* Single logout button */}
               <SidebarMenuItem>
                 <SidebarMenuButton
                   onClick={handleLogout}
                   tooltip="Logout"
-                  className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                  className="text-black font-bold hover:text-black hover:bg-gray-100"
                 >
                   <LogOut className="h-4 w-4" />
                   <span>Logout</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
+
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
@@ -168,10 +157,8 @@ export function CashierLayout({ children }: CashierLayoutProps) {
       
       if (response.success && response.cashier) {
         setCashier(response.cashier)
-        // Update last login
         await CashierAuthService.updateLastLogin(response.cashier.id)
       } else {
-        // Redirect to login if not authenticated
         router.push('/cashier/login')
       }
     } catch (error) {
@@ -219,14 +206,11 @@ export function CashierLayout({ children }: CashierLayoutProps) {
                 Welcome back, {cashier.full_name}
               </p>
             </div>
-            <div className="flex items-center gap-2">
-              
-              <Button variant="outline" size="sm" onClick={handleLogout}>
-                <LogOut className="h-4 w-4 mr-2" />
-                Logout
-              </Button>
-            </div>
+
+            {/* ❌ removed header logout button */}
+
           </header>
+
           <main className="flex-1 p-6">
             {children}
           </main>

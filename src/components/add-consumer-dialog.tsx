@@ -262,7 +262,7 @@ export function AddConsumerDialog({ onConsumerAdded }: AddConsumerDialogProps) {
             <CardContent className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="full_name">Full Name *</Label>
+                  <Label htmlFor="full_name">Full Name <span style={{ color: 'red' }}>*</span></Label>
                   <Input
                     id="full_name"
                     placeholder="John Doe"

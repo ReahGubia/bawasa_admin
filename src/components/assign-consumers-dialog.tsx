@@ -10,9 +10,8 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
-import { Loader2, CheckCircle, AlertCircle, Droplets, Calendar } from "lucide-react"
+import { Loader2, CheckCircle, Droplets, Calendar } from "lucide-react"
 import { supabase } from "@/lib/supabase"
 import { toast } from "sonner"
 import { MeterReaderAssignmentService } from "@/lib/meter-reader-assignment-service"
@@ -34,6 +33,7 @@ interface Consumer {
   lastReadingDate: string | null
   isAlreadyAssigned: boolean
   hasCompletedReading: boolean
+  isSuspended: boolean
   existingAssignmentStatus?: string
 }
 
@@ -61,24 +61,20 @@ export function AssignConsumersDialog({
     const today = new Date()
     const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0)
     const daysUntilEnd = lastDayOfMonth.getDate() - today.getDate()
-    
-    // Consider it "end of month" if within 3 days
     setIsNearEndOfMonth(daysUntilEnd <= 3)
-    
-    console.log(`📅 Days until end of month: ${daysUntilEnd}`)
   }
 
   const loadConsumers = async () => {
     try {
       setLoading(true)
       
-      // Get all consumers who need meter readings
       const { data: allConsumers, error: consumersError } = await supabase
         .from('consumers')
         .select(`
           id,
           water_meter_no,
           consumer_id,
+          is_suspended,
           accounts!consumer_id (
             full_name,
             email,
@@ -86,11 +82,8 @@ export function AssignConsumersDialog({
           )
         `)
 
-      if (consumersError) {
-        throw new Error(`Failed to load consumers: ${consumersError.message}`)
-      }
+      if (consumersError) throw new Error(consumersError.message)
 
-      // Get consumers who already have active assignments (assigned or ongoing)
       const { data: existingAssignments } = await supabase
         .from('meter_reader_assignments')
         .select('consumer_id, status')
@@ -103,7 +96,6 @@ export function AssignConsumersDialog({
         (existingAssignments || []).map(a => [a.consumer_id, a.status])
       )
 
-      // Get consumers who have completed assignments for the current month
       const currentMonthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1)
       const currentMonthEnd = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0, 23, 59, 59)
 
@@ -118,7 +110,6 @@ export function AssignConsumersDialog({
         (completedAssignments || []).map(a => a.consumer_id)
       )
 
-      // Get the latest meter reading for each consumer to determine if they need a reading
       const consumersWithReadings = await Promise.all(
         (allConsumers || []).map(async (consumer: any) => {
           const { data: lastReading } = await supabase
@@ -129,7 +120,6 @@ export function AssignConsumersDialog({
             .limit(1)
             .maybeSingle()
 
-          // Check if consumer has a meter reading for the current month
           const { data: currentMonthReading } = await supabase
             .from('bawasa_meter_readings')
             .select('id')
@@ -141,7 +131,7 @@ export function AssignConsumersDialog({
           const isAlreadyAssigned = assignedConsumerIds.has(consumer.id)
           const hasCompletedReading = completedConsumerIds.has(consumer.id) || currentMonthReading != null
           const needsReading = !lastReading || shouldNeedNewReading(lastReading.created_at)
-          
+
           return {
             id: consumer.id,
             water_meter_no: consumer.water_meter_no,
@@ -152,18 +142,15 @@ export function AssignConsumersDialog({
             lastReadingDate: lastReading?.created_at || null,
             isAlreadyAssigned,
             hasCompletedReading,
+            isSuspended: consumer.is_suspended,
             existingAssignmentStatus: assignmentStatusMap.get(consumer.id)
           }
         })
       )
 
-      // Filter out consumers who are already assigned OR have completed readings this month
-      const availableConsumers = consumersWithReadings.filter(
-        c => !c.isAlreadyAssigned && !c.hasCompletedReading
-      )
+      setConsumers(consumersWithReadings)
+      setFilteredConsumers(consumersWithReadings)
 
-      setConsumers(availableConsumers)
-      setFilteredConsumers(availableConsumers)
     } catch (error) {
       console.error('Error loading consumers:', error)
       toast.error('Failed to load consumers')
@@ -176,11 +163,7 @@ export function AssignConsumersDialog({
     const today = new Date()
     const lastDate = new Date(lastReadingDate)
     const daysDiff = Math.floor((today.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24))
-    return daysDiff >= 25 // Consider needing new reading if it's been 25+ days
-  }
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString()
+    return daysDiff >= 25
   }
 
   const handleSearch = (query: string) => {
@@ -189,7 +172,6 @@ export function AssignConsumersDialog({
       setFilteredConsumers(consumers)
       return
     }
-    
     const filtered = consumers.filter(consumer =>
       consumer.full_name.toLowerCase().includes(query.toLowerCase()) ||
       consumer.water_meter_no.includes(query) ||
@@ -198,7 +180,8 @@ export function AssignConsumersDialog({
     setFilteredConsumers(filtered)
   }
 
-  const toggleConsumer = (consumerId: string) => {
+  const toggleConsumer = (consumerId: string, isSuspended: boolean) => {
+    if (isSuspended) return
     const newSelected = new Set(selectedConsumers)
     if (newSelected.has(consumerId)) {
       newSelected.delete(consumerId)
@@ -213,54 +196,19 @@ export function AssignConsumersDialog({
       toast.error('Please select at least one consumer')
       return
     }
-
     try {
       setLoading(true)
-
       const selectedConsumerIds = Array.from(selectedConsumers)
-      
-      // Use the new assignment service to assign multiple consumers
-      const { data, error } = await MeterReaderAssignmentService.assignConsumers(
+      const { error } = await MeterReaderAssignmentService.assignConsumers(
         meterReaderId,
         selectedConsumerIds
       )
-
-      if (error) {
-        console.error('Error assigning consumers:', error)
-        
-        // Check if the junction table doesn't exist
-        if (error.message?.includes('does not exist') || error.code === '42P01') {
-          toast.error(
-            'Database table missing. Please run the SQL migration first.',
-            {
-              description: 'Execute CREATE_METER_READER_ASSIGNMENTS_TABLE.sql in Supabase SQL Editor'
-            }
-          )
-        } else {
-          throw new Error(`Failed to assign consumers: ${error.message || error}`)
-        }
-        return
-      }
-
-      const assignedCount = selectedConsumerIds.length
-      const assignedConsumers = selectedConsumerIds
-        .map(id => consumers.find(c => c.id === id))
-        .filter(Boolean)
-
-      toast.success(
-        `Successfully assigned ${assignedCount} consumer${assignedCount > 1 ? 's' : ''} to ${meterReaderName}`,
-        {
-          description: assignedConsumers.length <= 3 
-            ? `Consumers: ${assignedConsumers.map(c => c?.water_meter_no).join(', ')}`
-            : `${assignedCount} consumers assigned`
-        }
-      )
-
+      if (error) throw new Error(error.message || 'Failed to assign consumers')
+      toast.success(`Successfully assigned ${selectedConsumerIds.length} consumer(s) to ${meterReaderName}`)
       onOpenChange(false)
       setSelectedConsumers(new Set())
-      
     } catch (error) {
-      console.error('Error assigning consumers:', error)
+      console.error(error)
       toast.error(error instanceof Error ? error.message : 'Failed to assign consumers')
     } finally {
       setLoading(false)
@@ -287,17 +235,13 @@ export function AssignConsumersDialog({
         </DialogHeader>
 
         <div className="space-y-4">
-          {/* Search */}
-          <div className="relative">
-            <Input
-              placeholder="Search by name, email, or water meter number..."
-              value={searchQuery}
-              onChange={(e) => handleSearch(e.target.value)}
-              className="w-full"
-            />
-          </div>
+          <Input
+            placeholder="Search by name, email, or water meter number..."
+            value={searchQuery}
+            onChange={(e) => handleSearch(e.target.value)}
+            className="w-full"
+          />
 
-          {/* Consumers List */}
           <div className="border rounded-lg max-h-[400px] overflow-y-auto">
             {loading ? (
               <div className="flex items-center justify-center py-8">
@@ -313,24 +257,25 @@ export function AssignConsumersDialog({
                 {filteredConsumers.map((consumer) => (
                   <div
                     key={consumer.id}
-                    className={`p-4 cursor-pointer hover:bg-gray-50 transition-colors ${
-                      selectedConsumers.has(consumer.id) ? 'bg-blue-50 border-l-4 border-blue-500' : ''
-                    }`}
-                    onClick={() => toggleConsumer(consumer.id)}
+                    className={`p-4 cursor-pointer hover:bg-gray-50 transition-colors 
+                      ${selectedConsumers.has(consumer.id) ? 'bg-blue-50 border-l-4 border-blue-500' : ''}
+                      ${consumer.isSuspended ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    onClick={() => toggleConsumer(consumer.id, consumer.isSuspended)}
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex-1">
                         <div className="flex items-center space-x-2">
                           <h4 className="font-medium">{consumer.full_name}</h4>
                           {consumer.needsReading && (
-                            <Badge variant="destructive" className="text-xs">
-                              Needs Reading
-                            </Badge>
+                            <Badge variant="destructive" className="text-xs">Needs Reading</Badge>
                           )}
                           {consumer.lastReadingDate && (
                             <Badge variant="outline" className="text-xs">
                               Last: {new Date(consumer.lastReadingDate).toLocaleDateString()}
                             </Badge>
+                          )}
+                          {consumer.isSuspended && (
+                            <Badge variant="destructive" className="text-xs">Suspended</Badge>
                           )}
                         </div>
                         <p className="text-sm text-muted-foreground mt-1">
@@ -352,30 +297,17 @@ export function AssignConsumersDialog({
             )}
           </div>
 
-          {/* Selection Summary */}
           {selectedConsumers.size > 0 && (
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">
-                  {selectedConsumers.size} consumer{selectedConsumers.size > 1 ? 's' : ''} selected for assignment
-                </span>
-              </div>
+              <span className="text-sm font-medium">
+                {selectedConsumers.size} consumer{selectedConsumers.size > 1 ? 's' : ''} selected
+              </span>
             </div>
           )}
 
-          {/* Actions */}
           <div className="flex items-center justify-end space-x-2 pt-4 border-t">
-            <Button
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-              disabled={loading}
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={handleAssign}
-              disabled={loading || selectedConsumers.size === 0}
-            >
+            <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>Cancel</Button>
+            <Button onClick={handleAssign} disabled={loading || selectedConsumers.size === 0}>
               {loading ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -394,4 +326,3 @@ export function AssignConsumersDialog({
     </Dialog>
   )
 }
-

@@ -7,6 +7,7 @@ export interface Consumer {
   registered_voter: boolean | null
   created_at: string
   updated_at: string
+  is_suspended?: boolean
 }
 
 export interface Account {
@@ -65,39 +66,22 @@ export interface ConsumerWithStatus extends ConsumerWithAccount {
 
 export class ConsumerService {
   /**
-   * Fetch all consumers from the new table structure with account, meter reading, and billing information
+   * Fetch all consumers with account, latest meter reading, and billing info
    */
   static async getAllConsumers(): Promise<{ data: ConsumerWithAccount[] | null; error: any }> {
     try {
-      console.log('🔍 Fetching consumers from new table structure...')
-      
-      // Fetch consumers with account information
       const { data: consumers, error: consumersError } = await supabase
         .from('consumers')
-        .select(`
-          *,
-          accounts!consumer_id (
-            *
-          )
-        `)
+        .select(`*, accounts!consumer_id (*)`)
         .order('created_at', { ascending: false })
 
-      if (consumersError) {
-        console.error('❌ Consumers fetch failed:', consumersError)
-        return { data: null, error: consumersError }
-      }
+      if (consumersError) return { data: null, error: consumersError }
+      if (!consumers) return { data: [], error: null }
 
-      if (!consumers || consumers.length === 0) {
-        console.log('📭 No consumers found')
-        return { data: [], error: null }
-      }
-
-      // For each consumer, get their latest meter reading and billing
       const consumersWithDetails = await Promise.all(
-        consumers.map(async (consumer) => {
+        consumers.map(async (consumer: any) => {
           const account = consumer.accounts as any
-          
-          // Get latest meter reading for this consumer
+
           const { data: latestMeterReading } = await supabase
             .from('bawasa_meter_readings')
             .select('*')
@@ -106,7 +90,6 @@ export class ConsumerService {
             .limit(1)
             .single()
 
-          // Get latest billing for this consumer
           const { data: latestBilling } = await supabase
             .from('bawasa_billings')
             .select('*')
@@ -124,10 +107,9 @@ export class ConsumerService {
         })
       )
 
-      console.log('✅ Successfully fetched consumers:', consumersWithDetails.length, 'consumers')
       return { data: consumersWithDetails, error: null }
     } catch (error) {
-      console.error('💥 Unexpected error fetching consumers:', error)
+      console.error('Error fetching consumers:', error)
       return { data: null, error }
     }
   }
@@ -139,24 +121,13 @@ export class ConsumerService {
     try {
       const { data: consumer, error: consumerError } = await supabase
         .from('consumers')
-        .select(`
-          *,
-          accounts!consumer_id (
-            *
-          )
-        `)
+        .select(`*, accounts!consumer_id (*)`)
         .eq('id', id)
         .single()
 
-      if (consumerError) {
-        return { data: null, error: consumerError }
-      }
+      if (consumerError) return { data: null, error: consumerError }
+      if (!consumer) return { data: null, error: null }
 
-      if (!consumer) {
-        return { data: null, error: null }
-      }
-
-      // Get latest meter reading and billing
       const { data: latestMeterReading } = await supabase
         .from('bawasa_meter_readings')
         .select('*')
@@ -174,14 +145,15 @@ export class ConsumerService {
         .single()
 
       const account = consumer.accounts as any
-      const result = {
-        ...consumer,
-        account: account || null,
-        latest_meter_reading: latestMeterReading || null,
-        latest_billing: latestBilling || null
+      return {
+        data: {
+          ...consumer,
+          account: account || null,
+          latest_meter_reading: latestMeterReading || null,
+          latest_billing: latestBilling || null
+        },
+        error: null
       }
-
-      return { data: result, error: null }
     } catch (error) {
       console.error('Error fetching consumer:', error)
       return { data: null, error }
@@ -189,17 +161,13 @@ export class ConsumerService {
   }
 
   /**
-   * Update consumer payment status (updates the billing record)
+   * Update consumer payment status
    */
   static async updateConsumerPaymentStatus(id: string, paymentStatus: string): Promise<{ data: Billing | null; error: any }> {
     try {
-      // Update the latest billing record for this consumer
       const { data, error } = await supabase
         .from('bawasa_billings')
-        .update({ 
-          payment_status: paymentStatus,
-          updated_at: new Date().toISOString()
-        })
+        .update({ payment_status: paymentStatus, updated_at: new Date().toISOString() })
         .eq('consumer_id', id)
         .order('created_at', { ascending: false })
         .limit(1)
@@ -214,7 +182,26 @@ export class ConsumerService {
   }
 
   /**
-   * Delete a consumer (cascades to meter readings and billings)
+   * Suspend or unsuspend a consumer
+   */
+  static async updateConsumerSuspension(consumerId: string, suspended: boolean): Promise<{ data: any; error: any }> {
+    try {
+      const { data, error } = await supabase
+        .from('consumers')
+        .update({ is_suspended: suspended, updated_at: new Date().toISOString() })
+        .eq('id', consumerId)
+        .select()
+        .single()
+
+      return { data, error }
+    } catch (err) {
+      console.error('Error updating consumer suspension:', err)
+      return { data: null, error: err }
+    }
+  }
+
+  /**
+   * Delete a consumer
    */
   static async deleteConsumer(id: string): Promise<{ data: Consumer | null; error: any }> {
     try {
@@ -233,104 +220,12 @@ export class ConsumerService {
   }
 
   /**
-   * Search consumers by water meter number or account details
-   */
-  static async searchConsumers(query: string): Promise<{ data: ConsumerWithAccount[] | null; error: any }> {
-    try {
-      // Search consumers by water meter number
-      const { data: consumers, error: consumersError } = await supabase
-        .from('consumers')
-        .select(`
-          *,
-          accounts!consumer_id (
-            *
-          )
-        `)
-        .ilike('water_meter_no', `%${query}%`)
-        .order('created_at', { ascending: false })
-
-      if (consumersError) {
-        console.error('❌ Consumers search failed:', consumersError)
-        return { data: null, error: consumersError }
-      }
-
-      // Also search by account details
-      const { data: accounts, error: accountsError } = await supabase
-        .from('accounts')
-        .select(`
-          *,
-          consumers!consumer_id (
-            *
-          )
-        `)
-        .or(`email.ilike.%${query}%,full_name.ilike.%${query}%,full_address.ilike.%${query}%`)
-
-      if (accountsError) {
-        console.error('❌ Accounts search failed:', accountsError)
-        return { data: null, error: accountsError }
-      }
-
-      // Combine results
-      const consumerResults = consumers || []
-      const accountResults = accounts?.map(account => ({
-        ...account.consumers,
-        account: account
-      })) || []
-
-      // Merge and deduplicate
-      const allResults = [...consumerResults, ...accountResults]
-      const uniqueResults = allResults.filter((consumer, index, self) => 
-        index === self.findIndex(c => c.id === consumer.id)
-      )
-
-      // Get latest meter reading and billing for each consumer
-      const consumersWithDetails = await Promise.all(
-        uniqueResults.map(async (consumer) => {
-          const { data: latestMeterReading } = await supabase
-            .from('bawasa_meter_readings')
-            .select('*')
-            .eq('consumer_id', consumer.id)
-            .order('created_at', { ascending: false })
-            .limit(1)
-            .single()
-
-          const { data: latestBilling } = await supabase
-            .from('bawasa_billings')
-            .select('*')
-            .eq('consumer_id', consumer.id)
-            .order('created_at', { ascending: false })
-            .limit(1)
-            .single()
-
-          return {
-            ...consumer,
-            latest_meter_reading: latestMeterReading || null,
-            latest_billing: latestBilling || null
-          }
-        })
-      )
-
-      return { data: consumersWithDetails, error: null }
-    } catch (error) {
-      console.error('Error searching consumers:', error)
-      return { data: null, error }
-    }
-  }
-
-  /**
-   * Helper function to determine consumer status based on payment status
-   */
-  static getConsumerStatus(consumer: ConsumerWithAccount): 'paid' | 'unpaid' | 'partial' | 'overdue' {
-    return (consumer.latest_billing?.payment_status as 'paid' | 'unpaid' | 'partial' | 'overdue') || 'unpaid'
-  }
-
-  /**
-   * Format consumer data for display
+   * Format consumer for display
    */
   static formatConsumerForDisplay(consumer: ConsumerWithAccount): ConsumerWithStatus {
     return {
       ...consumer,
-      status: this.getConsumerStatus(consumer)
+      status: (consumer.latest_billing?.payment_status as 'paid' | 'unpaid' | 'partial' | 'overdue') || 'unpaid'
     }
   }
 }

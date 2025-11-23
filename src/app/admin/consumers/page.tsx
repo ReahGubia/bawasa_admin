@@ -16,7 +16,6 @@ import {
 import { 
   Users, 
   Search, 
-  Filter, 
   MoreHorizontal,
   CheckCircle,
   XCircle,
@@ -24,7 +23,6 @@ import {
   Loader2,
   RefreshCw,
   Home,
-  Phone,
   Mail
 } from "lucide-react"
 import {
@@ -32,7 +30,6 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { ConsumerService, ConsumerWithStatus } from "@/lib/consumer-service"
@@ -40,7 +37,7 @@ import { useEffect, useState } from "react"
 import { AddConsumerDialog } from "@/components/add-consumer-dialog"
 import { ViewConsumerDetailsDialog } from "@/components/view-consumer-details-dialog"
 
-export default function ConsumerManagementPage() {
+export default function Page() {
   const [consumers, setConsumers] = useState<ConsumerWithStatus[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -49,63 +46,35 @@ export default function ConsumerManagementPage() {
   const [selectedConsumer, setSelectedConsumer] = useState<ConsumerWithStatus | null>(null)
   const [detailsDialogOpen, setDetailsDialogOpen] = useState(false)
 
-  // Fetch consumers from Supabase
+  // Fetch consumers
   const fetchConsumers = async () => {
     try {
-      console.log('🚀 Starting to fetch consumers...')
       setLoading(true)
       setError(null)
-      
       const { data, error } = await ConsumerService.getAllConsumers()
-      
-      console.log('📋 Fetch result:', { data, error })
-      
       if (error) {
-        console.error('💥 Error in fetchConsumers:', error)
-        setError(error.message || 'Failed to fetch consumers')
+        setError(error.message || "Failed to fetch consumers")
         return
       }
-      
       if (data) {
-        console.log('📝 Formatting consumers...')
-        const formattedConsumers = data.map(consumer => ConsumerService.formatConsumerForDisplay(consumer))
-        console.log('✨ Formatted consumers:', formattedConsumers)
-        setConsumers(formattedConsumers)
-        setFilteredConsumers(formattedConsumers)
+        const formatted = data.map(ConsumerService.formatConsumerForDisplay)
+        setConsumers(formatted)
+        setFilteredConsumers(formatted)
       } else {
-        console.log('📭 No data returned from Supabase')
         setConsumers([])
         setFilteredConsumers([])
       }
     } catch (err) {
-      console.error('💥 Unexpected error in fetchConsumers:', err)
-      setError('An unexpected error occurred')
+      console.error(err)
+      setError("An unexpected error occurred")
     } finally {
       setLoading(false)
     }
   }
 
-  // Handle opening consumer details
-  const handleViewDetails = (consumer: ConsumerWithStatus) => {
-    setSelectedConsumer(consumer)
-    setDetailsDialogOpen(true)
-  }
-
-  // Handle consumer payment status update
-  const handleStatusUpdate = async (consumerId: string, paymentStatus: string) => {
-    try {
-      const { error } = await ConsumerService.updateConsumerPaymentStatus(consumerId, paymentStatus)
-      if (error) {
-        setError(error.message || 'Failed to update consumer payment status')
-        return
-      }
-      // Refresh the consumers list
-      await fetchConsumers()
-    } catch (err) {
-      setError('An unexpected error occurred')
-      console.error('Error updating consumer payment status:', err)
-    }
-  }
+  useEffect(() => {
+    fetchConsumers()
+  }, [])
 
   // Handle search
   const handleSearch = (query: string) => {
@@ -114,8 +83,7 @@ export default function ConsumerManagementPage() {
       setFilteredConsumers(consumers)
       return
     }
-    
-    const filtered = consumers.filter(consumer => 
+    const filtered = consumers.filter(consumer =>
       consumer.water_meter_no.toLowerCase().includes(query.toLowerCase()) ||
       consumer.account?.email?.toLowerCase().includes(query.toLowerCase()) ||
       consumer.account?.full_name?.toLowerCase().includes(query.toLowerCase()) ||
@@ -124,15 +92,29 @@ export default function ConsumerManagementPage() {
     setFilteredConsumers(filtered)
   }
 
-  // Format date for display
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
-    })
+  // View consumer details
+  const handleViewDetails = (consumer: ConsumerWithStatus) => {
+    setSelectedConsumer(consumer)
+    setDetailsDialogOpen(true)
   }
 
+  // Suspend or unsuspend consumer
+  const handleToggleSuspension = async (consumer: ConsumerWithStatus) => {
+    try {
+      const newSuspensionState = !consumer.is_suspended
+      await ConsumerService.updateConsumerSuspension(consumer.id, newSuspensionState)
+      await fetchConsumers()
+    } catch (err) {
+      console.error(err)
+      setError("Failed to update suspension")
+    }
+  }
+
+  // Format date
+  const formatDate = (dateString: string) =>
+    new Date(dateString).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+
+  // Status badge
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "paid":
@@ -148,22 +130,14 @@ export default function ConsumerManagementPage() {
     }
   }
 
-  // Load consumers on component mount
-  useEffect(() => {
-    console.log('🎯 Component mounted, starting consumer fetch...')
-    fetchConsumers()
-  }, [])
-
   return (
     <AdminLayout>
       <div className="space-y-6">
-        {/* Page Header */}
+        {/* Header */}
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Consumers</h1>
-            <p className="text-muted-foreground">
-              Manage consumer accounts and water service connections
-            </p>
+            <p className="text-muted-foreground">Manage consumer accounts and water service connections</p>
           </div>
           <div className="flex items-center space-x-2">
             <Button variant="outline" onClick={fetchConsumers} disabled={loading}>
@@ -174,8 +148,7 @@ export default function ConsumerManagementPage() {
           </div>
         </div>
 
-
-        {/* Error Message */}
+        {/* Error */}
         {error && (
           <Card className="border-red-200 bg-red-50">
             <CardContent className="pt-6">
@@ -191,9 +164,7 @@ export default function ConsumerManagementPage() {
         <Card>
           <CardHeader>
             <CardTitle>Consumer Accounts</CardTitle>
-            <CardDescription>
-              Manage all consumer accounts and water service connections
-            </CardDescription>
+            <CardDescription>Manage all consumer accounts and water service connections</CardDescription>
             <div className="flex items-center space-x-2 pt-4">
               <div className="relative flex-1 max-w-sm">
                 <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -204,7 +175,6 @@ export default function ConsumerManagementPage() {
                   onChange={(e) => handleSearch(e.target.value)}
                 />
               </div>
-              
             </div>
           </CardHeader>
           <CardContent>
@@ -217,9 +187,7 @@ export default function ConsumerManagementPage() {
               <div className="text-center py-8">
                 <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
                 <h3 className="text-lg font-medium">No consumers found</h3>
-                <p className="text-muted-foreground">
-                  {searchQuery ? 'Try adjusting your search criteria' : 'No consumers have been registered yet'}
-                </p>
+                <p className="text-muted-foreground">{searchQuery ? 'Try adjusting your search' : 'No consumers registered yet'}</p>
               </div>
             ) : (
               <Table>
@@ -234,34 +202,26 @@ export default function ConsumerManagementPage() {
                 </TableHeader>
                 <TableBody>
                   {filteredConsumers.map((consumer) => (
-                    <TableRow key={consumer.id}>
-                      <TableCell className="font-medium">
-                        <div className="flex items-center space-x-2">
-                          <Home className="h-4 w-4 text-muted-foreground" />
-                          <span>{consumer.account?.full_name || 'No name provided'}</span>
-                        </div>
+                    <TableRow 
+                      key={consumer.id} 
+                      className={consumer.is_suspended ? "bg-red-50 opacity-80" : ""}
+                    >
+                      <TableCell className="font-medium flex items-center space-x-2">
+                        <Home className="h-4 w-4 text-muted-foreground" />
+                        <span>{consumer.account?.full_name || 'No name'}</span>
+                        {consumer.is_suspended && <Badge variant="destructive">Suspended</Badge>}
                       </TableCell>
+                      <TableCell className="text-sm font-mono">{consumer.water_meter_no}</TableCell>
                       <TableCell>
-                        <div className="text-sm font-mono">
-                          {consumer.water_meter_no}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="space-y-1">
-                          <div className="flex items-center space-x-1 text-sm">
+                        <div className="space-y-1 text-sm">
+                          <div className="flex items-center space-x-1">
                             <Mail className="h-3 w-3 text-muted-foreground" />
-                            <span>{consumer.account?.email || 'No email provided'}</span>
+                            <span>{consumer.account?.email || 'No email'}</span>
                           </div>
-                          <div className="text-sm text-muted-foreground">
-                            {consumer.account?.full_address || 'No address provided'}
-                          </div>
+                          <div className="text-muted-foreground">{consumer.account?.full_address || 'No address'}</div>
                         </div>
                       </TableCell>
-                      <TableCell>
-                        <div className="text-sm">
-                          {formatDate(consumer.created_at)}
-                        </div>
-                      </TableCell>
+                      <TableCell className="text-sm">{formatDate(consumer.created_at)}</TableCell>
                       <TableCell className="text-right">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
@@ -275,9 +235,9 @@ export default function ConsumerManagementPage() {
                             <DropdownMenuItem onClick={() => handleViewDetails(consumer)}>
                               View Details
                             </DropdownMenuItem>
-                          
-                            
-                           
+                            <DropdownMenuItem onClick={() => handleToggleSuspension(consumer)}>
+                              {consumer.is_suspended ? 'Revoke Suspension' : 'Suspend'}
+                            </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>
