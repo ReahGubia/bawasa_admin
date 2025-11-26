@@ -1,212 +1,151 @@
 "use client"
 
+import { useState, useEffect } from "react"
 import { AdminLayout } from "@/components/admin-layout"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
-import { 
-  Users, 
-  Search, 
-  Filter, 
+  Users,
+  Search,
   MoreHorizontal,
-  CheckCircle,
-  XCircle,
-  Clock,
-  UserPlus,
   Loader2,
   RefreshCw,
   Droplets,
-  MapPin,
-  Calendar,
-  Activity
+  XCircle
 } from "lucide-react"
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { MeterReaderService, MeterReaderUser } from "@/lib/meter-reader-service"
 import { supabase } from "@/lib/supabase"
-import { useEffect, useState } from "react"
 import { AddMeterReaderDialog } from "@/components/add-meter-reader-dialog"
 import { AssignConsumersDialog } from "@/components/assign-consumers-dialog"
 import { ViewAssignedConsumersDialog } from "@/components/view-assigned-consumers-dialog"
+import { ViewMeterReaderDialog } from "@/components/ViewMeterReaderDialog"
 
 export default function MeterReaderManagementPage() {
   const [meterReaders, setMeterReaders] = useState<MeterReaderUser[]>([])
+  const [filteredMeterReaders, setFilteredMeterReaders] = useState<MeterReaderUser[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
-  const [filteredMeterReaders, setFilteredMeterReaders] = useState<MeterReaderUser[]>([])
+
   const [assignDialogOpen, setAssignDialogOpen] = useState(false)
   const [selectedMeterReaderForAssignment, setSelectedMeterReaderForAssignment] = useState<{id: number, name: string} | null>(null)
+
   const [viewAssignedDialogOpen, setViewAssignedDialogOpen] = useState(false)
   const [selectedMeterReaderForViewing, setSelectedMeterReaderForViewing] = useState<{id: number, name: string} | null>(null)
+
+  const [viewMeterReaderDialogOpen, setViewMeterReaderDialogOpen] = useState(false)
+  const [selectedMeterReader, setSelectedMeterReader] = useState<MeterReaderUser | null>(null)
+
   const [assignmentCounts, setAssignmentCounts] = useState<Record<number, number>>({})
   const [completedCounts, setCompletedCounts] = useState<Record<number, number>>({})
 
-  // Fetch meter readers from Supabase
+  // Fetch all meter readers
   const fetchMeterReaders = async () => {
+    setLoading(true)
+    setError(null)
     try {
-      console.log('🚀 Starting to fetch meter readers...')
-      setLoading(true)
-      setError(null)
-      
       const { data, error } = await MeterReaderService.getAllMeterReaders()
-      
-      console.log('📋 Fetch result:', { data, error })
-      
       if (error) {
-        console.error('💥 Error in fetchMeterReaders:', error)
-        setError(error.message || 'Failed to fetch meter readers')
+        setError(error.message || "Failed to fetch meter readers")
         return
       }
-      
       if (data) {
-        console.log('✨ Meter readers fetched:', data)
-        setMeterReaders(data)
-        setFilteredMeterReaders(data)
-        
-        // Fetch assignment counts and completed readings counts for each meter reader
-        const meterReaderIds = data.map(reader => reader.meter_reader_id).filter(Boolean)
+        // Normalize status to only active, suspended, or deleted
+        const normalizedData = data.map((reader: any) => ({
+          ...reader,
+          status: ['active', 'suspended', 'deleted'].includes(reader.status) ? reader.status : 'active',
+        }))
+        setMeterReaders(normalizedData)
+        setFilteredMeterReaders(normalizedData)
+        const meterReaderIds = normalizedData.map(m => m.meter_reader_id).filter(Boolean)
         fetchAssignmentCounts(meterReaderIds)
         fetchCompletedCounts(meterReaderIds)
-      } else {
-        console.log('📭 No data returned from Supabase')
-        setMeterReaders([])
-        setFilteredMeterReaders([])
       }
-    } catch (err) {
-      console.error('💥 Unexpected error in fetchMeterReaders:', err)
-      setError('An unexpected error occurred')
+    } catch {
+      setError("Unexpected error fetching meter readers")
     } finally {
       setLoading(false)
     }
   }
 
-  // Fetch assignment counts for meter readers
-  const fetchAssignmentCounts = async (meterReaderIds: (number | null)[]) => {
-    try {
-      const counts: Record<number, number> = {}
-      
-      for (const meterReaderId of meterReaderIds) {
-        if (!meterReaderId) continue
-        
-        // Get count from junction table if it exists
-        const { count, error } = await supabase
-          .from('meter_reader_assignments')
-          .select('*', { count: 'exact', head: true })
-          .eq('meter_reader_id', meterReaderId)
-          .in('status', ['assigned', 'ongoing'])
-        
-        if (!error) {
-          counts[meterReaderId] = count || 0
-        } else if (error.code === '42P01') {
-          // Table doesn't exist yet, use old field
-          counts[meterReaderId] = 0
-        }
-      }
-      
-      setAssignmentCounts(counts)
-    } catch (err) {
-      console.error('Error fetching assignment counts:', err)
+  const fetchAssignmentCounts = async (ids: (number | null)[]) => {
+    const counts: Record<number, number> = {}
+    for (const id of ids) {
+      if (!id) continue
+      const { count } = await supabase.from('meter_reader_assignments')
+        .select('*', { count: 'exact', head: true })
+        .eq('meter_reader_id', id)
+        .in('status', ['assigned', 'ongoing'])
+      counts[id] = count || 0
     }
+    setAssignmentCounts(counts)
   }
 
-  // Fetch completed readings counts for meter readers
-  const fetchCompletedCounts = async (meterReaderIds: (number | null)[]) => {
-    try {
-      const counts: Record<number, number> = {}
-      
-      for (const meterReaderId of meterReaderIds) {
-        if (!meterReaderId) continue
-        
-        // Get count of completed assignments (which indicates completed readings)
-        const { count, error } = await supabase
-          .from('meter_reader_assignments')
-          .select('*', { count: 'exact', head: true })
-          .eq('meter_reader_id', meterReaderId)
-          .eq('status', 'completed')
-        
-        if (!error) {
-          counts[meterReaderId] = count || 0
-        } else if (error.code === '42P01') {
-          // Table doesn't exist yet
-          counts[meterReaderId] = 0
-        }
-      }
-      
-      setCompletedCounts(counts)
-    } catch (err) {
-      console.error('Error fetching completed counts:', err)
+  const fetchCompletedCounts = async (ids: (number | null)[]) => {
+    const counts: Record<number, number> = {}
+    for (const id of ids) {
+      if (!id) continue
+      const { count } = await supabase.from('meter_reader_assignments')
+        .select('*', { count: 'exact', head: true })
+        .eq('meter_reader_id', id)
+        .eq('status', 'completed')
+      counts[id] = count || 0
     }
+    setCompletedCounts(counts)
   }
 
-  // Handle search
   const handleSearch = (query: string) => {
     setSearchQuery(query)
     if (!query.trim()) {
       setFilteredMeterReaders(meterReaders)
       return
     }
-    
-    const filtered = meterReaders.filter(reader => 
-      reader.full_name?.toLowerCase().includes(query.toLowerCase()) ||
-      reader.email?.toLowerCase().includes(query.toLowerCase()) ||
-      reader.mobile_no?.toString().includes(query)
+    const filtered = meterReaders.filter(r =>
+      r.full_name?.toLowerCase().includes(query.toLowerCase()) ||
+      r.email?.toLowerCase().includes(query.toLowerCase()) ||
+      r.mobile_no?.toString().includes(query)
     )
     setFilteredMeterReaders(filtered)
   }
 
-  // Format date for display
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
-    })
-  }
+  const formatDate = (dateString: string) => new Date(dateString).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
 
-  // Format last login date
-  const formatLastLogin = (dateString: string | null) => {
-    if (!dateString) return 'Never'
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    })
-  }
+  useEffect(() => { fetchMeterReaders() }, [])
 
-  // Load meter readers on component mount
-  useEffect(() => {
-    console.log('🎯 Component mounted, starting meter reader fetch...')
-    fetchMeterReaders()
-  }, [])
+  // Handle suspension/deletion: release all assigned consumers
+  const handleStatusChange = async (id: number, newStatus: string) => {
+    setMeterReaders(prev => prev.map(m => m.id === id ? { ...m, status: newStatus } : m))
+    setFilteredMeterReaders(prev => prev.map(m => m.id === id ? { ...m, status: newStatus } : m))
+
+    if (newStatus === 'suspended' || newStatus === 'deleted') {
+      await supabase.from('meter_reader_assignments')
+        .update({ status: 'unassigned', meter_reader_id: null })
+        .eq('meter_reader_id', id)
+        .in('status', ['assigned', 'ongoing'])
+
+      const meterReaderIds = meterReaders.map(m => m.meter_reader_id).filter(Boolean)
+      fetchAssignmentCounts(meterReaderIds)
+    }
+  }
 
   return (
     <AdminLayout>
       <div className="space-y-6">
-        {/* Page Header */}
+        {/* Header */}
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Meter Readers</h1>
-            <p className="text-muted-foreground">
-              Manage meter readers and their assigned routes
-            </p>
+            <p className="text-muted-foreground">Manage meter readers and assigned routes</p>
           </div>
           <div className="flex items-center space-x-2">
             <Button variant="outline" onClick={fetchMeterReaders} disabled={loading}>
@@ -217,9 +156,7 @@ export default function MeterReaderManagementPage() {
           </div>
         </div>
 
-        
-
-        {/* Error Message */}
+        {/* Error */}
         {error && (
           <Card className="border-red-200 bg-red-50">
             <CardContent className="pt-6">
@@ -231,24 +168,16 @@ export default function MeterReaderManagementPage() {
           </Card>
         )}
 
-        {/* Meter Readers Table */}
+        {/* Table */}
         <Card>
           <CardHeader>
             <CardTitle>Meter Reader Accounts</CardTitle>
-            <CardDescription>
-              Manage meter readers and their assigned routes for water meter readings
-            </CardDescription>
+            <CardDescription>Manage meter readers and assigned consumers</CardDescription>
             <div className="flex items-center space-x-2 pt-4">
               <div className="relative flex-1 max-w-sm">
                 <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input 
-                  placeholder="Search meter readers..." 
-                  className="pl-8" 
-                  value={searchQuery}
-                  onChange={(e) => handleSearch(e.target.value)}
-                />
+                <Input placeholder="Search meter readers..." className="pl-8" value={searchQuery} onChange={e => handleSearch(e.target.value)} />
               </div>
-              
             </div>
           </CardHeader>
           <CardContent>
@@ -261,9 +190,7 @@ export default function MeterReaderManagementPage() {
               <div className="text-center py-8">
                 <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
                 <h3 className="text-lg font-medium">No meter readers found</h3>
-                <p className="text-muted-foreground">
-                  {searchQuery ? 'Try adjusting your search criteria' : 'No meter readers have been registered yet'}
-                </p>
+                <p className="text-muted-foreground">{searchQuery ? 'Try adjusting your search criteria' : 'No meter readers registered yet'}</p>
               </div>
             ) : (
               <Table>
@@ -279,48 +206,45 @@ export default function MeterReaderManagementPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredMeterReaders.map((reader) => (
+                  {filteredMeterReaders.map(reader => (
                     <TableRow key={reader.id}>
-                      <TableCell className="font-medium">
-                        <div className="flex items-center space-x-2">
-                          <Users className="h-4 w-4 text-blue-600" />
-                          <span>{reader.full_name || 'No name provided'}</span>
-                        </div>
+                      {/* Name + Status Dot */}
+                      <TableCell className="font-medium flex items-center space-x-2">
+                        <Users className="h-4 w-4 text-blue-600" />
+                        <span>{reader.full_name || 'No name provided'}</span>
+                        <span
+                          className={`h-2 w-2 rounded-full inline-block ${
+                            reader.status === 'active'
+                              ? 'bg-green-500'
+                              : reader.status === 'suspended'
+                              ? 'bg-red-500'
+                              : 'bg-gray-400'
+                          }`}
+                          title={reader.status ?? ""}
+                        />
+                      </TableCell>
+
+                      <TableCell>{reader.email || 'No email provided'}</TableCell>
+                      <TableCell>{reader.mobile_no?.toString() || 'No phone provided'}</TableCell>
+
+                      {/* Assigned and Completed Counts */}
+                      <TableCell>
+                        <Badge className="bg-blue-50 text-blue-700 border-blue-200">
+                          {assignmentCounts[reader.meter_reader_id] || 0} consumer{assignmentCounts[reader.meter_reader_id] !== 1 ? 's' : ''}
+                        </Badge>
                       </TableCell>
                       <TableCell>
-                        <div className="text-sm">{reader.email || 'No email provided'}</div>
+                        <Badge className="bg-green-50 text-green-700 border-green-200">
+                          {completedCounts[reader.meter_reader_id] || 0} reading{completedCounts[reader.meter_reader_id] !== 1 ? 's' : ''}
+                        </Badge>
                       </TableCell>
-                      <TableCell>
-                        <div className="text-sm">
-                          {reader.mobile_no ? reader.mobile_no.toString() : 'No phone provided'}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center space-x-2">
-                          <Badge variant="secondary" className="bg-blue-50 text-blue-700 border-blue-200">
-                            <Users className="h-3 w-3 mr-1" />
-                            {assignmentCounts[reader.meter_reader_id] || 0} consumer{assignmentCounts[reader.meter_reader_id] !== 1 ? 's' : ''}
-                          </Badge>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center space-x-2">
-                          <Badge variant="default" className="bg-green-50 text-green-700 border-green-200">
-                            <CheckCircle className="h-3 w-3 mr-1" />
-                            {completedCounts[reader.meter_reader_id] || 0} reading{completedCounts[reader.meter_reader_id] !== 1 ? 's' : ''}
-                          </Badge>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="text-sm">
-                          {formatDate(reader.created_at)}
-                        </div>
-                      </TableCell>
+                      <TableCell>{formatDate(reader.created_at)}</TableCell>
+
+                      {/* Actions */}
                       <TableCell className="text-right">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button variant="ghost" className="h-8 w-8 p-0">
-                              <span className="sr-only">Open menu</span>
                               <MoreHorizontal className="h-4 w-4" />
                             </Button>
                           </DropdownMenuTrigger>
@@ -330,17 +254,23 @@ export default function MeterReaderManagementPage() {
                               setSelectedMeterReaderForViewing({id: reader.id, name: reader.full_name || 'Unknown'})
                               setViewAssignedDialogOpen(true)
                             }}>
-                              <Users className="h-4 w-4 mr-2" />
-                              View Assigned Consumers
+                              <Users className="h-4 w-4 mr-2" />View Assigned Consumers
                             </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => {
-                              setSelectedMeterReaderForAssignment({id: reader.id, name: reader.full_name || 'Unknown'})
-                              setAssignDialogOpen(true)
+                              setSelectedMeterReader({ ...reader })
+                              setViewMeterReaderDialogOpen(true)
                             }}>
-                              <Droplets className="h-4 w-4 mr-2" />
-                              Assign Consumers
+                              <Users className="h-4 w-4 mr-2" />View / Edit
                             </DropdownMenuItem>
-                      
+                            <DropdownMenuItem
+                              onClick={() => {
+                                setSelectedMeterReaderForAssignment({id: reader.id, name: reader.full_name || 'Unknown'})
+                                setAssignDialogOpen(true)
+                              }}
+                              disabled={reader.status !== 'active'}
+                            >
+                              <Droplets className="h-4 w-4 mr-2" />Assign Consumers
+                            </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>
@@ -353,7 +283,7 @@ export default function MeterReaderManagementPage() {
         </Card>
       </div>
 
-      {/* Assign Consumers Dialog */}
+      {/* Dialogs */}
       {selectedMeterReaderForAssignment && (
         <AssignConsumersDialog
           open={assignDialogOpen}
@@ -363,7 +293,6 @@ export default function MeterReaderManagementPage() {
         />
       )}
 
-      {/* View Assigned Consumers Dialog */}
       {selectedMeterReaderForViewing && (
         <ViewAssignedConsumersDialog
           open={viewAssignedDialogOpen}
@@ -372,7 +301,15 @@ export default function MeterReaderManagementPage() {
           meterReaderName={selectedMeterReaderForViewing.name}
         />
       )}
+
+      {selectedMeterReader && (
+        <ViewMeterReaderDialog
+          open={viewMeterReaderDialogOpen}
+          onOpenChange={setViewMeterReaderDialogOpen}
+          meterReader={selectedMeterReader}
+          onStatusChange={handleStatusChange}
+        />
+      )}
     </AdminLayout>
   )
 }
-

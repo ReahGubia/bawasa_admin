@@ -48,17 +48,6 @@ export function ViewConsumerDetailsDialog({
     })
   }
 
-  const formatDateTime = (dateString: string | null) => {
-    if (!dateString) return 'Not set'
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    })
-  }
-
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "paid":
@@ -72,13 +61,6 @@ export function ViewConsumerDetailsDialog({
       default:
         return <Badge variant="outline">{status}</Badge>
     }
-  }
-
-  const isOverdue = () => {
-    if (consumer.latest_billing?.payment_status === 'paid') return false
-    const dueDate = new Date(consumer.latest_billing?.due_date || '')
-    const today = new Date()
-    return today > dueDate
   }
 
   return (
@@ -122,7 +104,15 @@ export function ViewConsumerDetailsDialog({
                     <span className="text-sm">{consumer.account?.email || 'Not provided'}</span>
                   </div>
                 </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-gray-500">Phone Number</label>
+                  <div className="flex items-center space-x-2">
+                    <Phone className="h-4 w-4 text-gray-400" />
+                    <span className="text-sm">{consumer.account?.mobile_no || 'Not provided'}</span>
+                  </div>
+                </div>
               </div>
+
               <div className="space-y-2">
                 <label className="text-sm font-medium text-gray-500">Address</label>
                 <div className="flex items-start space-x-2">
@@ -130,6 +120,7 @@ export function ViewConsumerDetailsDialog({
                   <span className="text-sm">{consumer.account?.full_address || 'Not provided'}</span>
                 </div>
               </div>
+
               <div className="space-y-2">
                 <label className="text-sm font-medium text-gray-500">Water Meter Number</label>
                 <div className="font-mono text-sm bg-gray-100 px-2 py-1 rounded">

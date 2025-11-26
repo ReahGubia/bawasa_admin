@@ -202,14 +202,15 @@ export default function Page() {
                 </TableHeader>
                 <TableBody>
                   {filteredConsumers.map((consumer) => (
-                    <TableRow 
-                      key={consumer.id} 
-                      className={consumer.is_suspended ? "bg-red-50 opacity-80" : ""}
-                    >
+                    <TableRow key={consumer.id}>
                       <TableCell className="font-medium flex items-center space-x-2">
                         <Home className="h-4 w-4 text-muted-foreground" />
                         <span>{consumer.account?.full_name || 'No name'}</span>
-                        {consumer.is_suspended && <Badge variant="destructive">Suspended</Badge>}
+                        <span
+                          className={`h-2 w-2 rounded-full inline-block ${
+                            consumer.is_suspended ? 'bg-red-500' : 'bg-green-500'
+                          }`}
+                        />
                       </TableCell>
                       <TableCell className="text-sm font-mono">{consumer.water_meter_no}</TableCell>
                       <TableCell>

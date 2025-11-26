@@ -32,6 +32,7 @@ interface Consumer {
   needsReading: boolean
   lastReadingDate: string | null
   isAlreadyAssigned: boolean
+  assignedMeterReaderId?: number
   hasCompletedReading: boolean
   isSuspended: boolean
   existingAssignmentStatus?: string
@@ -67,13 +68,11 @@ export function AssignConsumersDialog({
   const loadConsumers = async () => {
     try {
       setLoading(true)
-      
       const { data: allConsumers, error: consumersError } = await supabase
         .from('consumers')
         .select(`
           id,
           water_meter_no,
-          consumer_id,
           is_suspended,
           accounts!consumer_id (
             full_name,
@@ -86,14 +85,11 @@ export function AssignConsumersDialog({
 
       const { data: existingAssignments } = await supabase
         .from('meter_reader_assignments')
-        .select('consumer_id, status')
+        .select('consumer_id, meter_reader_id, status')
         .in('status', ['assigned', 'ongoing'])
 
-      const assignedConsumerIds = new Set(
-        (existingAssignments || []).map(a => a.consumer_id)
-      )
-      const assignmentStatusMap = new Map(
-        (existingAssignments || []).map(a => [a.consumer_id, a.status])
+      const assignedConsumerMap = new Map(
+        (existingAssignments || []).map(a => [a.consumer_id, a.meter_reader_id])
       )
 
       const currentMonthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1)
@@ -106,30 +102,22 @@ export function AssignConsumersDialog({
         .gte('updated_at', currentMonthStart.toISOString())
         .lte('updated_at', currentMonthEnd.toISOString())
 
-      const completedConsumerIds = new Set(
-        (completedAssignments || []).map(a => a.consumer_id)
-      )
+      const completedConsumerIds = new Set((completedAssignments || []).map(a => a.consumer_id))
 
       const consumersWithReadings = await Promise.all(
         (allConsumers || []).map(async (consumer: any) => {
           const { data: lastReading } = await supabase
             .from('bawasa_meter_readings')
-            .select('created_at, present_reading')
+            .select('created_at')
             .eq('consumer_id', consumer.id)
             .order('created_at', { ascending: false })
             .limit(1)
             .maybeSingle()
 
-          const { data: currentMonthReading } = await supabase
-            .from('bawasa_meter_readings')
-            .select('id')
-            .eq('consumer_id', consumer.id)
-            .gte('created_at', currentMonthStart.toISOString())
-            .lte('created_at', currentMonthEnd.toISOString())
-            .maybeSingle()
+          const assignedMeterReaderId = assignedConsumerMap.get(consumer.id) || null
+          const isAlreadyAssigned = assignedMeterReaderId !== null
 
-          const isAlreadyAssigned = assignedConsumerIds.has(consumer.id)
-          const hasCompletedReading = completedConsumerIds.has(consumer.id) || currentMonthReading != null
+          const hasCompletedReading = completedConsumerIds.has(consumer.id)
           const needsReading = !lastReading || shouldNeedNewReading(lastReading.created_at)
 
           return {
@@ -141,18 +129,17 @@ export function AssignConsumersDialog({
             needsReading,
             lastReadingDate: lastReading?.created_at || null,
             isAlreadyAssigned,
+            assignedMeterReaderId,
             hasCompletedReading,
             isSuspended: consumer.is_suspended,
-            existingAssignmentStatus: assignmentStatusMap.get(consumer.id)
           }
         })
       )
 
       setConsumers(consumersWithReadings)
       setFilteredConsumers(consumersWithReadings)
-
     } catch (error) {
-      console.error('Error loading consumers:', error)
+      console.error(error)
       toast.error('Failed to load consumers')
     } finally {
       setLoading(false)
@@ -180,14 +167,11 @@ export function AssignConsumersDialog({
     setFilteredConsumers(filtered)
   }
 
-  const toggleConsumer = (consumerId: string, isSuspended: boolean) => {
-    if (isSuspended) return
+  const toggleConsumer = (consumerId: string, disabled: boolean) => {
+    if (disabled) return
     const newSelected = new Set(selectedConsumers)
-    if (newSelected.has(consumerId)) {
-      newSelected.delete(consumerId)
-    } else {
-      newSelected.add(consumerId)
-    }
+    if (newSelected.has(consumerId)) newSelected.delete(consumerId)
+    else newSelected.add(consumerId)
     setSelectedConsumers(newSelected)
   }
 
@@ -259,13 +243,13 @@ export function AssignConsumersDialog({
                     key={consumer.id}
                     className={`p-4 cursor-pointer hover:bg-gray-50 transition-colors 
                       ${selectedConsumers.has(consumer.id) ? 'bg-blue-50 border-l-4 border-blue-500' : ''}
-                      ${consumer.isSuspended ? 'opacity-50 cursor-not-allowed' : ''}`}
-                    onClick={() => toggleConsumer(consumer.id, consumer.isSuspended)}
+                      ${consumer.isSuspended || (consumer.isAlreadyAssigned && consumer.assignedMeterReaderId !== meterReaderId) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    onClick={() => toggleConsumer(consumer.id, consumer.isSuspended || (consumer.isAlreadyAssigned && consumer.assignedMeterReaderId !== meterReaderId))}
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex-1">
                         <div className="flex items-center space-x-2">
-                          <h4 className="font-medium">{consumer.full_name}</h4>
+                          <span className="font-medium">{consumer.full_name}</span>
                           {consumer.needsReading && (
                             <Badge variant="destructive" className="text-xs">Needs Reading</Badge>
                           )}
@@ -276,6 +260,11 @@ export function AssignConsumersDialog({
                           )}
                           {consumer.isSuspended && (
                             <Badge variant="destructive" className="text-xs">Suspended</Badge>
+                          )}
+                          {consumer.isAlreadyAssigned && consumer.assignedMeterReaderId !== meterReaderId && (
+                            <Badge variant="outline" className="text-xs">
+                              Assigned to another meter reader
+                            </Badge>
                           )}
                         </div>
                         <p className="text-sm text-muted-foreground mt-1">
