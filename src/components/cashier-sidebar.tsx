@@ -8,7 +8,6 @@ import {
   History, 
   User, 
   LogOut
-
 } from "lucide-react"
 import {
   Sidebar,
@@ -61,6 +60,8 @@ export function CashierSidebar({ cashier, onLogout }: CashierSidebarProps) {
 
   const handleLogout = async () => {
     await CashierAuthService.logout()
+    // Navigate to unified sign-in page
+    router.push('/')
     onLogout()
   }
 
@@ -122,7 +123,6 @@ export function CashierSidebar({ cashier, onLogout }: CashierSidebarProps) {
                   </div>
                 </div>
               </SidebarMenuItem>
-
               
               <SidebarMenuItem>
                 <SidebarMenuButton
@@ -135,18 +135,16 @@ export function CashierSidebar({ cashier, onLogout }: CashierSidebarProps) {
                 </SidebarMenuButton>
               </SidebarMenuItem>
 
-              {/* Single logout button */}
               <SidebarMenuItem>
                 <SidebarMenuButton
                   onClick={handleLogout}
                   tooltip="Logout"
-                  className="text-black font-bold hover:text-black hover:bg-gray-100"
+                  className="text-red-600 hover:text-red-700 hover:bg-red-50"
                 >
                   <LogOut className="h-4 w-4" />
                   <span>Logout</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
-
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
@@ -170,16 +168,21 @@ export function CashierLayout({ children }: CashierLayoutProps) {
       const response = await CashierAuthService.getCurrentCashier()
       
       if (response.success && response.cashier) {
+        // Check if cashier is suspended
+        if (response.cashier.status === 'suspended') {
+          // Still allow access but show warning - don't redirect
+          console.warn('Cashier account is suspended')
+        }
         setCashier(response.cashier)
+        // Update last login
         await CashierAuthService.updateLastLogin(response.cashier.id)
       } else {
         // Redirect to unified sign-in page if not authenticated
-        router.push('/signin')
-
+        router.push('/')
       }
     } catch (error) {
       console.error('Auth check error:', error)
-      router.push('/signin')
+      router.push('/')
     } finally {
       setLoading(false)
     }
@@ -187,7 +190,7 @@ export function CashierLayout({ children }: CashierLayoutProps) {
 
   const handleLogout = () => {
     setCashier(null)
-    router.push('/signin')
+    router.push('/')
   }
 
   React.useEffect(() => {
@@ -222,11 +225,7 @@ export function CashierLayout({ children }: CashierLayoutProps) {
                 Welcome back, {cashier.full_name}
               </p>
             </div>
-
-            {/* ❌ removed header logout button */}
-
           </header>
-
           <main className="flex-1 p-6">
             {children}
           </main>

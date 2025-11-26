@@ -17,27 +17,32 @@ import {
   Users, 
   Search, 
   MoreHorizontal,
-  CheckCircle,
   XCircle,
-  Clock,
   Loader2,
   RefreshCw,
   Home,
-  Mail
+  Mail,
+  Ban,
+  CheckCircle2
 } from "lucide-react"
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { ConsumerService, ConsumerWithStatus } from "@/lib/consumer-service"
 import { useEffect, useState } from "react"
 import { AddConsumerDialog } from "@/components/add-consumer-dialog"
 import { ViewConsumerDetailsDialog } from "@/components/view-consumer-details-dialog"
+import { ConsumerMeterReadingHistoryDialog } from "@/components/consumer-meter-reading-history-dialog"
+import { ConsumerBillingPaymentHistoryDialog } from "@/components/consumer-billing-payment-history-dialog"
+import { ConsumerMaintenanceReportHistoryDialog } from "@/components/consumer-maintenance-report-history-dialog"
+import { Droplets, Receipt, Wrench } from "lucide-react"
 
-export default function Page() {
+export default function ConsumerManagementPage() {
   const [consumers, setConsumers] = useState<ConsumerWithStatus[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -45,36 +50,111 @@ export default function Page() {
   const [filteredConsumers, setFilteredConsumers] = useState<ConsumerWithStatus[]>([])
   const [selectedConsumer, setSelectedConsumer] = useState<ConsumerWithStatus | null>(null)
   const [detailsDialogOpen, setDetailsDialogOpen] = useState(false)
+  const [meterReadingDialogOpen, setMeterReadingDialogOpen] = useState(false)
+  const [billingDialogOpen, setBillingDialogOpen] = useState(false)
+  const [maintenanceDialogOpen, setMaintenanceDialogOpen] = useState(false)
 
-  // Fetch consumers
+  // Fetch consumers from Supabase
   const fetchConsumers = async () => {
     try {
+      console.log('🚀 Starting to fetch consumers...')
       setLoading(true)
       setError(null)
+      
       const { data, error } = await ConsumerService.getAllConsumers()
+      
+      console.log('📋 Fetch result:', { data, error })
+      
       if (error) {
-        setError(error.message || "Failed to fetch consumers")
+        console.error('💥 Error in fetchConsumers:', error)
+        setError(error.message || 'Failed to fetch consumers')
         return
       }
+      
       if (data) {
-        const formatted = data.map(ConsumerService.formatConsumerForDisplay)
-        setConsumers(formatted)
-        setFilteredConsumers(formatted)
+        console.log('📝 Formatting consumers...')
+        const formattedConsumers = data.map(consumer => ConsumerService.formatConsumerForDisplay(consumer))
+        console.log('✨ Formatted consumers:', formattedConsumers)
+        setConsumers(formattedConsumers)
+        setFilteredConsumers(formattedConsumers)
       } else {
+        console.log('📭 No data returned from Supabase')
         setConsumers([])
         setFilteredConsumers([])
       }
     } catch (err) {
-      console.error(err)
-      setError("An unexpected error occurred")
+      console.error('💥 Unexpected error in fetchConsumers:', err)
+      setError('An unexpected error occurred')
     } finally {
       setLoading(false)
     }
   }
 
-  useEffect(() => {
-    fetchConsumers()
-  }, [])
+  // Handle opening consumer details
+  const handleViewDetails = (consumer: ConsumerWithStatus) => {
+    setSelectedConsumer(consumer)
+    setDetailsDialogOpen(true)
+  }
+
+  // Handle opening meter reading history
+  const handleViewMeterReadingHistory = (consumer: ConsumerWithStatus) => {
+    setSelectedConsumer(consumer)
+    setMeterReadingDialogOpen(true)
+  }
+
+  // Handle opening billing history
+  const handleViewBillingHistory = (consumer: ConsumerWithStatus) => {
+    setSelectedConsumer(consumer)
+    setBillingDialogOpen(true)
+  }
+
+  // Handle opening maintenance report history
+  const handleViewMaintenanceHistory = (consumer: ConsumerWithStatus) => {
+    setSelectedConsumer(consumer)
+    setMaintenanceDialogOpen(true)
+  }
+
+  // Handle suspending a consumer
+  const handleSuspendConsumer = async (consumer: ConsumerWithStatus) => {
+    if (!consumer.account?.id) {
+      setError('Consumer account ID not found')
+      return
+    }
+
+    try {
+      const { error } = await ConsumerService.suspendConsumer(consumer.account.id)
+      if (error) {
+        setError(error.message || 'Failed to suspend consumer')
+        return
+      }
+      // Refresh the consumers list
+      await fetchConsumers()
+    } catch (err) {
+      setError('An unexpected error occurred')
+      console.error('Error suspending consumer:', err)
+    }
+  }
+
+  // Handle unsuspending a consumer
+  const handleUnsuspendConsumer = async (consumer: ConsumerWithStatus) => {
+    if (!consumer.account?.id) {
+      setError('Consumer account ID not found')
+      return
+    }
+
+    try {
+      const { error } = await ConsumerService.unsuspendConsumer(consumer.account.id)
+      if (error) {
+        setError(error.message || 'Failed to unsuspend consumer')
+        return
+      }
+      // Refresh the consumers list
+      await fetchConsumers()
+    } catch (err) {
+      setError('An unexpected error occurred')
+      console.error('Error unsuspending consumer:', err)
+    }
+  }
 
   // Handle search
   const handleSearch = (query: string) => {
@@ -83,7 +163,8 @@ export default function Page() {
       setFilteredConsumers(consumers)
       return
     }
-    const filtered = consumers.filter(consumer =>
+    
+    const filtered = consumers.filter(consumer => 
       consumer.water_meter_no.toLowerCase().includes(query.toLowerCase()) ||
       consumer.account?.email?.toLowerCase().includes(query.toLowerCase()) ||
       consumer.account?.full_name?.toLowerCase().includes(query.toLowerCase()) ||
@@ -92,52 +173,31 @@ export default function Page() {
     setFilteredConsumers(filtered)
   }
 
-  // View consumer details
-  const handleViewDetails = (consumer: ConsumerWithStatus) => {
-    setSelectedConsumer(consumer)
-    setDetailsDialogOpen(true)
+  // Format date for display
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    })
   }
 
-  // Suspend or unsuspend consumer
-  const handleToggleSuspension = async (consumer: ConsumerWithStatus) => {
-    try {
-      const newSuspensionState = !consumer.is_suspended
-      await ConsumerService.updateConsumerSuspension(consumer.id, newSuspensionState)
-      await fetchConsumers()
-    } catch (err) {
-      console.error(err)
-      setError("Failed to update suspension")
-    }
-  }
-
-  // Format date
-  const formatDate = (dateString: string) =>
-    new Date(dateString).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
-
-  // Status badge
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case "paid":
-        return <Badge variant="default" className="bg-green-100 text-green-800"><CheckCircle className="h-3 w-3 mr-1" />Paid</Badge>
-      case "unpaid":
-        return <Badge variant="secondary" className="bg-yellow-100 text-yellow-800"><Clock className="h-3 w-3 mr-1" />Unpaid</Badge>
-      case "partial":
-        return <Badge variant="outline" className="bg-blue-100 text-blue-800"><Clock className="h-3 w-3 mr-1" />Partial</Badge>
-      case "overdue":
-        return <Badge variant="destructive"><XCircle className="h-3 w-3 mr-1" />Overdue</Badge>
-      default:
-        return <Badge variant="outline">{status}</Badge>
-    }
-  }
+  // Load consumers on component mount
+  useEffect(() => {
+    console.log('🎯 Component mounted, starting consumer fetch...')
+    fetchConsumers()
+  }, [])
 
   return (
     <AdminLayout>
       <div className="space-y-6">
-        {/* Header */}
+        {/* Page Header */}
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Consumers</h1>
-            <p className="text-muted-foreground">Manage consumer accounts and water service connections</p>
+            <p className="text-muted-foreground">
+              Manage consumer accounts and water service connections
+            </p>
           </div>
           <div className="flex items-center space-x-2">
             <Button variant="outline" onClick={fetchConsumers} disabled={loading}>
@@ -148,7 +208,8 @@ export default function Page() {
           </div>
         </div>
 
-        {/* Error */}
+
+        {/* Error Message */}
         {error && (
           <Card className="border-red-200 bg-red-50">
             <CardContent className="pt-6">
@@ -164,7 +225,9 @@ export default function Page() {
         <Card>
           <CardHeader>
             <CardTitle>Consumer Accounts</CardTitle>
-            <CardDescription>Manage all consumer accounts and water service connections</CardDescription>
+            <CardDescription>
+              Manage all consumer accounts and water service connections
+            </CardDescription>
             <div className="flex items-center space-x-2 pt-4">
               <div className="relative flex-1 max-w-sm">
                 <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -175,6 +238,7 @@ export default function Page() {
                   onChange={(e) => handleSearch(e.target.value)}
                 />
               </div>
+              
             </div>
           </CardHeader>
           <CardContent>
@@ -187,7 +251,9 @@ export default function Page() {
               <div className="text-center py-8">
                 <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
                 <h3 className="text-lg font-medium">No consumers found</h3>
-                <p className="text-muted-foreground">{searchQuery ? 'Try adjusting your search' : 'No consumers registered yet'}</p>
+                <p className="text-muted-foreground">
+                  {searchQuery ? 'Try adjusting your search criteria' : 'No consumers have been registered yet'}
+                </p>
               </div>
             ) : (
               <Table>
@@ -202,26 +268,42 @@ export default function Page() {
                 </TableHeader>
                 <TableBody>
                   {filteredConsumers.map((consumer) => (
-                    <TableRow 
-                      key={consumer.id} 
-                      className={consumer.is_suspended ? "bg-red-50 opacity-80" : ""}
-                    >
-                      <TableCell className="font-medium flex items-center space-x-2">
-                        <Home className="h-4 w-4 text-muted-foreground" />
-                        <span>{consumer.account?.full_name || 'No name'}</span>
-                        {consumer.is_suspended && <Badge variant="destructive">Suspended</Badge>}
-                      </TableCell>
-                      <TableCell className="text-sm font-mono">{consumer.water_meter_no}</TableCell>
-                      <TableCell>
-                        <div className="space-y-1 text-sm">
-                          <div className="flex items-center space-x-1">
-                            <Mail className="h-3 w-3 text-muted-foreground" />
-                            <span>{consumer.account?.email || 'No email'}</span>
+                    <TableRow key={consumer.id}>
+                      <TableCell className="font-medium">
+                        <div className="flex items-center space-x-2">
+                          <Home className="h-4 w-4 text-muted-foreground" />
+                          <div className="flex flex-col">
+                          <span>{consumer.account?.full_name || 'No name provided'}</span>
+                            {consumer.account?.status === 'suspended' && (
+                              <Badge variant="destructive" className="mt-1 w-fit">
+                                <Ban className="h-3 w-3 mr-1" />
+                                Suspended
+                              </Badge>
+                            )}
                           </div>
-                          <div className="text-muted-foreground">{consumer.account?.full_address || 'No address'}</div>
                         </div>
                       </TableCell>
-                      <TableCell className="text-sm">{formatDate(consumer.created_at)}</TableCell>
+                      <TableCell>
+                        <div className="text-sm font-mono">
+                          {consumer.water_meter_no}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="space-y-1">
+                          <div className="flex items-center space-x-1 text-sm">
+                            <Mail className="h-3 w-3 text-muted-foreground" />
+                            <span>{consumer.account?.email || 'No email provided'}</span>
+                          </div>
+                          <div className="text-sm text-muted-foreground">
+                            {consumer.account?.full_address || 'No address provided'}
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="text-sm">
+                          {formatDate(consumer.created_at)}
+                        </div>
+                      </TableCell>
                       <TableCell className="text-right">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
@@ -235,9 +317,37 @@ export default function Page() {
                             <DropdownMenuItem onClick={() => handleViewDetails(consumer)}>
                               View Details
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleToggleSuspension(consumer)}>
-                              {consumer.is_suspended ? 'Revoke Suspension' : 'Suspend'}
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem onClick={() => handleViewMeterReadingHistory(consumer)}>
+                              <Droplets className="h-4 w-4 mr-2" />
+                              Meter Reading History
                             </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleViewBillingHistory(consumer)}>
+                              <Receipt className="h-4 w-4 mr-2" />
+                              Billing & Payment History
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleViewMaintenanceHistory(consumer)}>
+                              <Wrench className="h-4 w-4 mr-2" />
+                              Maintenance Report History
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            {consumer.account?.status === 'suspended' ? (
+                              <DropdownMenuItem 
+                                onClick={() => handleUnsuspendConsumer(consumer)}
+                                className="text-green-600"
+                              >
+                                <CheckCircle2 className="h-4 w-4 mr-2" />
+                                Unsuspend Consumer
+                              </DropdownMenuItem>
+                            ) : (
+                              <DropdownMenuItem 
+                                onClick={() => handleSuspendConsumer(consumer)}
+                                className="text-red-600"
+                              >
+                                <Ban className="h-4 w-4 mr-2" />
+                                Suspend Consumer
+                              </DropdownMenuItem>
+                            )}
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>
@@ -255,6 +365,27 @@ export default function Page() {
         consumer={selectedConsumer}
         open={detailsDialogOpen}
         onOpenChange={setDetailsDialogOpen}
+      />
+
+      {/* Meter Reading History Dialog */}
+      <ConsumerMeterReadingHistoryDialog
+        consumer={selectedConsumer}
+        open={meterReadingDialogOpen}
+        onOpenChange={setMeterReadingDialogOpen}
+      />
+
+      {/* Billing & Payment History Dialog */}
+      <ConsumerBillingPaymentHistoryDialog
+        consumer={selectedConsumer}
+        open={billingDialogOpen}
+        onOpenChange={setBillingDialogOpen}
+      />
+
+      {/* Maintenance Report History Dialog */}
+      <ConsumerMaintenanceReportHistoryDialog
+        consumer={selectedConsumer}
+        open={maintenanceDialogOpen}
+        onOpenChange={setMaintenanceDialogOpen}
       />
     </AdminLayout>
   )
