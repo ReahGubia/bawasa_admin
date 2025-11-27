@@ -11,7 +11,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { Loader2, CheckCircle, Droplets, Calendar } from "lucide-react"
+import { Loader2, CheckCircle, Droplets, Calendar, CheckSquare, Square } from "lucide-react"
 import { supabase } from "@/lib/supabase"
 import { toast } from "sonner"
 import { MeterReaderAssignmentService } from "@/lib/meter-reader-assignment-service"
@@ -134,29 +134,38 @@ export function AssignConsumersDialog({
         }) => {
           const { data: lastReading } = await supabase
             .from('bawasa_meter_readings')
-            .select('created_at, present_reading')
+            .select('created_at, present_reading, remarks')
             .eq('consumer_id', consumer.id)
             .order('created_at', { ascending: false })
             .limit(1)
             .maybeSingle()
 
-          // Check if consumer has a meter reading for the current month
-          const { data: currentMonthReading } = await supabase
+          // Check if consumer has a REGULAR meter reading for the current month
+          // Exclude meter change readings (they have [METER_CHANGED] in remarks)
+          const { data: currentMonthReadings } = await supabase
             .from('bawasa_meter_readings')
-            .select('id')
+            .select('id, remarks')
             .eq('consumer_id', consumer.id)
             .gte('created_at', currentMonthStart.toISOString())
             .lte('created_at', currentMonthEnd.toISOString())
-            .maybeSingle()
+
+          // Filter out meter change readings - only count regular readings as "completed"
+          const regularReadingsThisMonth = (currentMonthReadings || []).filter(
+            reading => !reading.remarks?.includes('[METER_CHANGED]')
+          )
+          const hasRegularReadingThisMonth = regularReadingsThisMonth.length > 0
 
           const isAlreadyAssigned = assignedConsumerIds.has(consumer.id)
-          const hasCompletedReading = completedConsumerIds.has(consumer.id) || currentMonthReading != null
-          const needsReading = !lastReading || shouldNeedNewReading(lastReading.created_at)
+          const hasCompletedReading = completedConsumerIds.has(consumer.id) || hasRegularReadingThisMonth
+          
+          // Check if meter was changed - they need a new reading on the new meter
+          const meterWasChanged = lastReading?.remarks?.includes('[METER_CHANGED]') || false
+          const needsReading = !lastReading || shouldNeedNewReading(lastReading.created_at) || meterWasChanged
           
           const account = Array.isArray(consumer.accounts) 
             ? consumer.accounts[0] 
             : consumer.accounts
-
+          
           return {
             id: consumer.id,
             water_meter_no: consumer.water_meter_no,
@@ -217,6 +226,28 @@ export function AssignConsumersDialog({
       newSelected.add(consumerId)
     }
     setSelectedConsumers(newSelected)
+  }
+
+  // Check if all filtered consumers are selected
+  const isAllSelected = filteredConsumers.length > 0 && 
+    filteredConsumers.every(c => selectedConsumers.has(c.id))
+
+  // Check if some (but not all) filtered consumers are selected
+  const isSomeSelected = filteredConsumers.some(c => selectedConsumers.has(c.id)) && !isAllSelected
+
+  // Toggle select all filtered consumers
+  const toggleSelectAll = () => {
+    if (isAllSelected) {
+      // Deselect all filtered consumers
+      const newSelected = new Set(selectedConsumers)
+      filteredConsumers.forEach(c => newSelected.delete(c.id))
+      setSelectedConsumers(newSelected)
+    } else {
+      // Select all filtered consumers
+      const newSelected = new Set(selectedConsumers)
+      filteredConsumers.forEach(c => newSelected.add(c.id))
+      setSelectedConsumers(newSelected)
+    }
   }
 
   const handleAssign = async () => {
@@ -312,6 +343,34 @@ export function AssignConsumersDialog({
               className="w-full"
             />
           </div>
+
+          {/* Select All Header */}
+          {!loading && filteredConsumers.length > 0 && (
+            <div className="flex items-center justify-between bg-gray-50 border rounded-lg p-3">
+              <button
+                type="button"
+                onClick={toggleSelectAll}
+                className="flex items-center space-x-2 text-sm font-medium hover:text-blue-600 transition-colors"
+              >
+                {isAllSelected ? (
+                  <CheckSquare className="h-5 w-5 text-blue-600" />
+                ) : isSomeSelected ? (
+                  <div className="h-5 w-5 border-2 border-blue-600 rounded bg-blue-100 flex items-center justify-center">
+                    <div className="h-2 w-2 bg-blue-600 rounded-sm" />
+                  </div>
+                ) : (
+                  <Square className="h-5 w-5 text-gray-400" />
+                )}
+                <span>
+                  {isAllSelected ? 'Deselect All' : 'Select All'}
+                  {searchQuery && ` (${filteredConsumers.length} filtered)`}
+                </span>
+              </button>
+              <span className="text-sm text-muted-foreground">
+                {filteredConsumers.length} consumer{filteredConsumers.length !== 1 ? 's' : ''} available
+              </span>
+            </div>
+          )}
 
           {/* Consumers List */}
           <div className="border rounded-lg max-h-[400px] overflow-y-auto">
